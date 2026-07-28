@@ -9,12 +9,13 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="PonsScan — pons launchpad analytics">
 <meta property="og:description" content="Rug-check any pons token, watch launches live, track graduations and PONS burns — all read straight from Robinhood Chain in your browser.">
-<meta property="og:url" content="https://ponsscan.vercel.app">
-<meta property="og:image" content="https://ponsscan.vercel.app/screenshot.png">
+<meta property="og:url" content="https://ponsscan.xyz">
+<meta property="og:image" content="https://ponsscan.xyz/screenshot.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="PonsScan — pons launchpad analytics">
 <meta name="twitter:description" content="Rug-check any pons token, watch launches live, track graduations and PONS burns — all read straight from Robinhood Chain in your browser.">
-<meta name="twitter:image" content="https://ponsscan.vercel.app/screenshot.png">
+<meta name="twitter:image" content="https://ponsscan.xyz/screenshot.png">
+<link rel="canonical" href="https://ponsscan.xyz/">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   .viz-root {
@@ -77,6 +78,8 @@
   .badge { display: inline-block; font-size: 11px; font-weight: 600; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; vertical-align: 3px; margin-left: 8px; }
   .sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .live-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; color: var(--text-secondary); }
+  .tg-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; border-radius: 999px; padding: 4px 12px; color: #fff; background: linear-gradient(135deg, #0e9c60, #12b06c); box-shadow: 0 1px 4px rgba(14,156,96,0.35); }
+  .tg-pill:hover { filter: brightness(1.08); }
   .live-pill .ldot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
   .live-pill.on .ldot { background: var(--status-good); }
   .btnrow { display: flex; gap: 8px; }
@@ -177,6 +180,7 @@
   <div class="sub">
     <span>Independent analytics for the <a href="https://www.ponsfamily.com/launchpad" target="_blank" rel="noopener">pons</a> launchpad on Robinhood Chain</span>
     <span class="live-pill" id="livePill"><span class="ldot"></span><span id="liveText">Connecting…</span></span>
+    <a class="tg-pill" href="https://t.me/ponsscan" target="_blank" rel="noopener">🎓 Graduation alerts — Telegram</a>
   </div>
 
   <div class="kpis">
@@ -309,7 +313,7 @@
     <strong>Live refresh.</strong> Launch feed refreshes every 60s; market, holder, burn and radar data every 5 minutes; the full 24h scan every 30 minutes (and on "Refresh now"). If the RPC or APIs are unreachable from your network, the page falls back to the 28 Jul snapshot — the pill next to the title shows which mode you're in.<br>
     <strong>About pons.</strong> Fixed-supply (1B) token launches against WETH; pool fee 1%; graduation at 4.2 WETH; creator earns 70% of trading fees (90% on legacy launches); 80% of protocol fees are TWAP-bought back into PONS and burned. Community takeovers of abandoned tokens are possible via the official CTO process. pons reportedly accounts for over half of all Robinhood Chain transactions (The Crypto Times, 27 Jul 2026); a V2 with RWAs and ETH-denominated fees has been reported (BSCN, Jul 2026).<br>
     <strong>Limitations.</strong> "Graduated" is proxied via pool WETH balance vs the 4.2 threshold; holder counts exclude the pool, factories, locker and burn addresses and require &gt;1 token; the safety score is a heuristic screen, not a contract audit; creator activity in the inspector covers roughly the last 28 hours of blocks.<br>
-    Independent community project — not affiliated with pons or Robinhood. Nothing here is financial advice.
+    Independent community project by <a href="https://x.com/Argostroloji" target="_blank" rel="noopener">@Argostroloji</a> — not affiliated with pons or Robinhood. Nothing here is financial advice. · 🎓 <a href="https://t.me/ponsscan" target="_blank" rel="noopener">Graduation alerts on Telegram</a>
   </footer>
 
 </div>
