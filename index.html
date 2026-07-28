@@ -289,7 +289,7 @@
 
   <div class="card">
     <h2>Safety signals — sampled launches</h2>
-    <div class="desc">Rule-based heuristic score (0–100) from on-chain signals: creator's serial-launch activity, market state, and real holders outside the liquidity pool. <strong>Not an audit, not financial advice</strong> — a screening aid.</div>
+    <div class="desc">Rule-based heuristic score (0–100) from on-chain signals: creator's serial-launch activity, market state, and real holders outside the liquidity pool. Fixed 12-token cohort (28 Jul window); market, holder and graduation data re-checked live every 5 min. <strong>Not an audit, not financial advice</strong> — a screening aid.</div>
     <table id="safetyTable">
       <thead><tr><th>Token</th><th>Creator activity</th><th>Market</th><th>Holders (non-pool)</th><th>Score</th><th>Verdict</th></tr></thead>
       <tbody></tbody>
@@ -477,7 +477,7 @@
     { addr: '0x35679fd5bd49e209c7012209a34632ceb71d366b', sym: 'DOGSHIT', name: 'Dogshit', creatorN: 1, indexed: true, price: 0.0000026, vol: 3397, liq: 2582, fdv: 2582, holders: null, pool: null },
     { addr: '0xf37832d8fee09f1eeaf52ebdae474d378e57cf1f', sym: 'HOODSPOT', name: 'Hoodspot', creatorN: 1, indexed: true, price: 0.0000025, vol: 205, liq: 2546, fdv: 2546, holders: null, pool: null },
     { addr: '0x744ffdae51ac94c40f12917e7e81539b9d4a33d3', sym: 'RIALTO', name: 'RIALTO', creatorN: 1, indexed: true, price: 0.0000025, vol: 183, liq: 2546, fdv: 2546, holders: null, pool: null },
-    { addr: '0x0b9d8c12485b41df99babbe97522ffabdd709e60', sym: 'CANDLE', name: 'Candle Cat', creatorN: null, indexed: true, price: 0.0000026, vol: 29535, liq: 2583, fdv: 2583, holders: 0, pool: '0xe8830e0d2f317a7b3c3881f1817c694b3bd02549' },
+    { addr: '0x0b9d8c12485b41df99babbe97522ffabdd709e60', sym: 'CATZ', name: 'CATZ', creatorN: null, indexed: false, price: null, vol: null, liq: null, fdv: null, holders: null, pool: null },
     { addr: '0x4631208e9cc518c9b285b895026388a9fcb0e636', sym: 'CHAT', name: 'robinchat', creatorN: null, indexed: true, price: 0.0000025, vol: 352, liq: 2549, fdv: 2549, holders: null, pool: null },
     { addr: '0x62bd2aa7052801e0b9f1dcfc97188fab8b330d3c', sym: 'SCREAM', name: 'Scared Hamster', creatorN: null, indexed: true, price: 0.0000025, vol: 2, liq: 2547, fdv: 2547, holders: null, pool: null },
     { addr: '0x234ff13c02e78ee8e3fea0aa99f9527c4ca1d6f3', sym: '—', name: 'Unindexed token', creatorN: 13, indexed: false, price: null, vol: null, liq: null, fdv: null, holders: null, pool: null },
@@ -1149,12 +1149,22 @@
     } catch (e) { /* optional */ }
   }
 
+  async function refreshSampleHolders() {
+    // sequential, best-effort — Blockscout rate-limits politely
+    for (const t of TOKENS.filter(t => t.indexed)) {
+      const h = await fetchHolders(t.addr, t.pool);
+      if (h != null) t.holders = h;
+      await sleep(400);
+    }
+  }
+
   /* ================= ORCHESTRATION ================= */
   async function refreshAll(fullScan) {
     if (refreshing) return;
     refreshing = true;
     try {
       await Promise.allSettled([refreshPons(), refreshBurn(), refreshSampleMarket(), refreshSampleGrad()]);
+      await refreshSampleHolders();
       renderSafetyTable(); renderDetailTable(); renderSurvival();
       if (rpcLive) {
         if (fullScan) await scan24h();
@@ -1180,6 +1190,7 @@
       await scan24h();
       await gradRadar();
       refreshSampleGrad().then(renderSurvival);
+      refreshSampleHolders().then(() => { renderSafetyTable(); renderDetailTable(); });
     }
     // timers
     setInterval(refreshFeedData, 60 * 1000);
