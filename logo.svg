@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 240" width="260" height="240">
+  <defs>
+    <!-- chrome-green vertical banding (shared by both letters) -->
+    <linearGradient id="base" x1="0" y1="26" x2="30" y2="214" gradientUnits="userSpaceOnUse">
+      <stop offset="0"    stop-color="#eafff5"/>
+      <stop offset="0.14" stop-color="#a9f2cf"/>
+      <stop offset="0.36" stop-color="#3ecf8e"/>
+      <stop offset="0.52" stop-color="#0e9c60"/>
+      <stop offset="0.70" stop-color="#065c37"/>
+      <stop offset="0.84" stop-color="#0a7b49"/>
+      <stop offset="0.94" stop-color="#3fe39c"/>
+      <stop offset="1"    stop-color="#b0ffdd"/>
+    </linearGradient>
+    <linearGradient id="rimg" x1="0" y1="26" x2="24" y2="214" gradientUnits="userSpaceOnUse">
+      <stop offset="0"   stop-color="#0c5535"/>
+      <stop offset="0.5" stop-color="#03301b"/>
+      <stop offset="1"   stop-color="#0f7c4c"/>
+    </linearGradient>
+    <linearGradient id="scan" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"   stop-color="#f6fffb" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#f6fffb" stop-opacity="0.95"/>
+      <stop offset="1"   stop-color="#f6fffb" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="blur2"><feGaussianBlur stdDeviation="2"/></filter>
+    <filter id="blur4"><feGaussianBlur stdDeviation="4"/></filter>
+    <!-- letterforms as open strokes -->
+    <path id="pP" d="M 52 206 V 62 H 88 A 37 37 0 0 1 88 136 H 54" fill="none"/>
+    <path id="pS" d="M 216 74 C 212 52 192 44 174 44 C 152 44 138 58 138 74 C 138 118 214 96 214 148 C 214 170 196 182 174 182 C 152 182 136 172 132 154" fill="none" transform="translate(8,0)"/>
+    <mask id="letters">
+      <use href="#pP" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+      <use href="#pS" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+
+  <!-- dark rim (slightly wider) -->
+  <g stroke="url(#rimg)" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
+    <use href="#pP"/><use href="#pS"/>
+  </g>
+  <!-- main chrome-green tube -->
+  <g stroke="url(#base)" stroke-width="33" stroke-linecap="round" stroke-linejoin="round">
+    <use href="#pP"/><use href="#pS"/>
+  </g>
+  <!-- glossy top-light inside the tube + hot specular spots -->
+  <g mask="url(#letters)">
+    <g stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" filter="url(#blur2)" transform="translate(-3,-6)">
+      <use href="#pP"/><use href="#pS"/>
+    </g>
+    <ellipse cx="56" cy="66" rx="14" ry="9" fill="#ffffff" opacity="0.95" filter="url(#blur2)"/>
+    <ellipse cx="180" cy="50" rx="16" ry="8" fill="#ffffff" opacity="0.85" filter="url(#blur2)"/>
+    <ellipse cx="130" cy="210" rx="120" ry="18" fill="#a2ffd6" opacity="0.45" filter="url(#blur4)"/>
+    <!-- scanline sweep -->
+    <rect x="10" y="112" width="240" height="7" fill="url(#scan)" opacity="0.95"/>
+    <rect x="10" y="122" width="240" height="2.5" fill="url(#scan)" opacity="0.55"/>
+  </g>
+</svg>

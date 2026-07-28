@@ -1,4 +1,4 @@
-# PonsScan
+# <img src="logo.svg" height="36" alt=""> PonsScan
 
 Independent analytics & safety dashboard for the [pons](https://ponsfamily.com) launchpad on **Robinhood Chain** — a single self-contained HTML file that reads the chain directly from your browser. No backend, no API keys, no wallet connection.
 
