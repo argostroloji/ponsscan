@@ -144,6 +144,13 @@
   .gradbar .meter { max-width: 320px; }
 
   /* Feed & radar */
+  .copybtn { cursor: pointer; border: none; background: none; color: var(--text-muted); font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 4px; vertical-align: 1px; }
+  .copybtn:hover { color: var(--series-1); background: color-mix(in oklab, var(--series-1) 12%, transparent); }
+  .copybtn.ok { color: var(--status-good); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .mini-btn { font: inherit; font-size: 11px; font-weight: 600; color: var(--text-secondary); background: var(--page); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+  .mini-btn:hover { color: var(--series-1); border-color: var(--series-1); }
+  .mini-btn:disabled { opacity: 0.5; cursor: default; }
   .feed-table td { padding: 6px 8px; }
   .feed-sym { font-weight: 600; cursor: pointer; }
   .feed-sym:hover { color: var(--series-1); text-decoration: underline; }
@@ -227,8 +234,8 @@
 
   <div class="grid2">
     <div class="card">
-      <h2>Live launch feed</h2>
-      <div class="desc">Most recent launches on the active factory — refreshes every 60s. Click a token to inspect it. Red badge = serial deployer (launches by that wallet in the last 24h).</div>
+      <div class="card-head"><h2>Live launch feed</h2><button class="mini-btn" id="feedRefreshBtn" type="button">↻ Refresh</button></div>
+      <div class="desc">Most recent launches on the active factory — refreshes every 60s. Click a token to inspect it, ⧉ copies the contract address. Red badge = serial deployer (launches by that wallet in the last 24h).</div>
       <table class="feed-table" id="feedTable">
         <thead><tr><th>Token</th><th>Age</th><th>Creator</th></tr></thead>
         <tbody><tr><td colspan="3" style="color:var(--text-muted)">Loading…</td></tr></tbody>
@@ -637,6 +644,29 @@
   }
   const sym = a => symbolCache.get(a.toLowerCase()) || shortAddr(a);
 
+  /* ================= COPY CA ================= */
+  async function copyText(txt, btn) {
+    try { await navigator.clipboard.writeText(txt); }
+    catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e2) { /* give up quietly */ }
+      ta.remove();
+    }
+    if (btn) {
+      btn.textContent = '✓'; btn.classList.add('ok');
+      setTimeout(() => { btn.textContent = '⧉'; btn.classList.remove('ok'); }, 1200);
+    }
+  }
+  function copyBtn(addr) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'copybtn'; b.textContent = '⧉';
+    b.title = 'Copy contract address';
+    b.addEventListener('click', e => { e.stopPropagation(); copyText(addr, b); });
+    return b;
+  }
+
   /* ================= LIVE FEED ================= */
   async function refreshFeedData() {
     if (!rpcLive) return;
@@ -675,6 +705,7 @@
       const s = document.createElement('span'); s.className = 'feed-sym'; s.textContent = sym(l.token);
       s.title = l.token; s.addEventListener('click', () => { $('inspInput').value = l.token; inspect(l.token); });
       tdT.appendChild(s);
+      tdT.appendChild(copyBtn(l.token));
       if (n >= 5) { const w = document.createElement('span'); w.className = 'warnchip'; w.textContent = '×' + n; w.title = n + ' launches by this creator in the scanned window'; tdT.appendChild(w); }
       tr.appendChild(tdT);
       const tdA = document.createElement('td');
@@ -733,8 +764,10 @@
     top.forEach(({ l, bal }) => {
       const pct = Math.min(100, Number(bal * 1000n / GRAD_WEI) / 10);
       const row = document.createElement('div'); row.className = 'radar-row';
-      const s = document.createElement('span'); s.className = 'radar-sym'; s.textContent = sym(l.token); s.title = l.token;
-      s.addEventListener('click', () => { $('inspInput').value = l.token; inspect(l.token); });
+      const s = document.createElement('span'); s.className = 'radar-sym'; s.title = l.token;
+      const symTx = document.createElement('span'); symTx.textContent = sym(l.token);
+      symTx.addEventListener('click', () => { $('inspInput').value = l.token; inspect(l.token); });
+      s.append(symTx, copyBtn(l.token));
       const meter = document.createElement('div'); meter.className = 'meter';
       const fill = document.createElement('div'); fill.className = 'fill'; fill.style.width = pct + '%';
       if (pct >= 60) fill.style.background = 'var(--status-good)';
@@ -871,6 +904,7 @@
       // Render
       $('inspName').textContent = (symbol ? symbol : shortAddr(a)) + (name && name !== symbol ? ' — ' + name : '');
       $('inspAddr').textContent = a;
+      $('inspAddr').appendChild(copyBtn(a));
       const vc = $('inspVerdict'); vc.replaceChildren();
       const ic = document.createElement('span'); ic.textContent = v.icon; ic.style.color = v.color; ic.style.fontWeight = '700';
       vc.append(ic, document.createTextNode(' ' + v.text + ' · score ' + score));
@@ -1150,6 +1184,11 @@
   }
 
   $('refreshBtn').addEventListener('click', () => refreshAll(true));
+  $('feedRefreshBtn').addEventListener('click', async () => {
+    const b = $('feedRefreshBtn');
+    b.disabled = true; b.textContent = '…';
+    try { await refreshFeedData(); } finally { b.textContent = '↻ Refresh'; b.disabled = false; }
+  });
   init();
 })();
 </script>
