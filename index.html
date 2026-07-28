@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PonsScan — pons launchpad analytics · Robinhood Chain</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  .viz-root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --delta-good: #006300;
+    --status-good: #0ca30c;
+    --status-warning: #fab219;
+    --status-serious: #ec835a;
+    --status-critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255,255,255,0.10);
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --delta-good: #0ca30c;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --delta-good: #0ca30c;
+  }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .viz-root { background: var(--page); color: var(--text-primary); min-height: 100vh; padding: 24px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+  h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+  h1 .accent { color: var(--series-1); }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; vertical-align: 3px; margin-left: 8px; }
+  .sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .live-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; color: var(--text-secondary); }
+  .live-pill .ldot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+  .live-pill.on .ldot { background: var(--status-good); }
+  .btnrow { display: flex; gap: 8px; }
+  .toggle { font: inherit; font-size: 12px; color: var(--text-secondary); background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .tile .label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .tile .value { font-size: 26px; font-weight: 600; }
+  .tile .delta { font-size: 12px; font-weight: 600; margin-left: 6px; }
+  .tile .delta.up { color: var(--delta-good); }
+  .tile .delta.down { color: var(--status-critical); }
+  .tile .note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .card h2 { font-size: 14px; font-weight: 650; margin-bottom: 2px; }
+  .card .desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .axis-tick { font-size: 11px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .cap-label { font-size: 11px; font-weight: 600; fill: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .seg-label { font-size: 12px; font-weight: 600; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 3px; }
+  .meterrow { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .meter { flex: 1; height: 10px; border-radius: 5px; background: color-mix(in oklab, var(--series-1) 18%, var(--surface-1)); overflow: hidden; }
+  .meter .fill { height: 100%; border-radius: 5px 0 0 5px; background: var(--series-1); }
+  .meter-val { font-size: 13px; font-weight: 650; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 10px; border-bottom: 1px solid var(--grid); }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--grid); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  td.mono, .mono { font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--text-secondary); }
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 8px; border: 1px solid var(--border); color: var(--text-secondary); white-space: nowrap; }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .score-cell { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+  .score-meter { width: 64px; height: 8px; border-radius: 4px; overflow: hidden; flex: none; }
+  .score-meter .sfill { height: 100%; border-radius: 4px 0 0 4px; }
+  .score-num { font-weight: 650; font-size: 13px; width: 22px; text-align: right; }
+  .factor { font-size: 10.5px; color: var(--text-muted); }
+  .tooltip { position: fixed; pointer-events: none; background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); box-shadow: 0 4px 16px rgba(0,0,0,0.12); border-radius: 8px; padding: 8px 10px; font-size: 12px; z-index: 10; display: none; }
+  .tooltip .t-val { font-weight: 650; font-size: 13px; }
+  .tooltip .t-lab { color: var(--text-secondary); font-size: 11px; }
+  footer { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; margin-top: 20px; }
+  footer strong { color: var(--text-secondary); }
+  a { color: var(--series-1); text-decoration: none; }
+
+  /* Inspector */
+  .insp-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .insp-row input { flex: 1; min-width: 260px; font: inherit; font-size: 13px; font-family: ui-monospace, monospace; color: var(--text-primary); background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; outline: none; }
+  .insp-row input:focus { border-color: var(--series-1); }
+  .insp-btn { font: inherit; font-size: 13px; font-weight: 600; color: #fff; background: var(--series-1); border: none; border-radius: 8px; padding: 8px 18px; cursor: pointer; }
+  .insp-btn:disabled { opacity: 0.5; cursor: default; }
+  .insp-status { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+  .insp-result { margin-top: 14px; border-top: 1px solid var(--grid); padding-top: 14px; display: none; }
+  .insp-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .insp-head .tname { font-size: 18px; font-weight: 650; }
+  .insp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .insp-cell .label { font-size: 11px; color: var(--text-secondary); margin-bottom: 2px; }
+  .insp-cell .val { font-size: 14px; font-weight: 600; }
+  .insp-cell .val.small { font-size: 12px; font-weight: 500; }
+  .insp-factors { font-size: 11.5px; color: var(--text-muted); line-height: 1.7; }
+  .insp-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; }
+  .gradbar { display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; }
+  .gradbar .meter { max-width: 320px; }
+
+  /* Feed & radar */
+  .feed-table td { padding: 6px 8px; }
+  .feed-sym { font-weight: 600; cursor: pointer; }
+  .feed-sym:hover { color: var(--series-1); text-decoration: underline; }
+  .warnchip { display: inline-block; font-size: 10px; font-weight: 700; color: #fff; background: var(--status-critical); border-radius: 999px; padding: 1px 6px; margin-left: 6px; }
+  .radar-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--grid); }
+  .radar-row:last-child { border-bottom: none; }
+  .radar-sym { width: 110px; font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .radar-sym:hover { color: var(--series-1); }
+  .radar-val { width: 90px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .scan-status { font-size: 11px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="viz-root" id="root">
+<div class="wrap">
+
+  <header class="top">
+    <h1><span class="accent">pons</span>scan<span class="badge">v0.2</span></h1>
+    <div class="btnrow">
+      <button class="toggle" id="refreshBtn" type="button">Refresh now</button>
+      <button class="toggle" id="themeToggle" type="button">Toggle dark mode</button>
+    </div>
+  </header>
+  <div class="sub">
+    <span>Independent analytics for the <a href="https://www.ponsfamily.com/launchpad" target="_blank" rel="noopener">pons</a> launchpad on Robinhood Chain</span>
+    <span class="live-pill" id="livePill"><span class="ldot"></span><span id="liveText">Connecting…</span></span>
+  </div>
+
+  <div class="kpis">
+    <div class="tile">
+      <div class="label">Token launches / 24h</div>
+      <div class="value" id="kpiLaunches">…</div>
+      <div class="note" id="kpiLaunchesNote">Exact on-chain count, active factory</div>
+    </div>
+    <div class="tile">
+      <div class="label">PONS price</div>
+      <div class="value"><span id="ponsPrice">…</span><span class="delta up" id="ponsDelta"></span></div>
+      <div class="note">vs previous 24h · main WETH pool</div>
+    </div>
+    <div class="tile">
+      <div class="label">PONS volume (24h, all pools)</div>
+      <div class="value" id="ponsVol">…</div>
+      <div class="note" id="ponsVolNote">FDV — · liquidity —</div>
+    </div>
+    <div class="tile">
+      <div class="label">PONS burned (buyback &amp; burn)</div>
+      <div class="value" id="kpiBurn">…</div>
+      <div class="note" id="kpiBurnNote">80% of protocol fees → TWAP buyback → burn</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Token inspector — check any pons token</h2>
+    <div class="desc">Paste a token address: creator history, real holders, market state and graduation progress are read live from the chain and turned into a transparent safety score. <strong>Not an audit, not financial advice.</strong></div>
+    <div class="insp-row">
+      <input id="inspInput" type="text" placeholder="0x… token address" spellcheck="false" autocomplete="off">
+      <button class="insp-btn" id="inspBtn" type="button">Inspect</button>
+    </div>
+    <div class="insp-status" id="inspStatus"></div>
+    <div class="insp-result" id="inspResult">
+      <div class="insp-head">
+        <span class="tname" id="inspName">—</span>
+        <span class="chip" id="inspVerdict"></span>
+        <span class="mono" id="inspAddr"></span>
+      </div>
+      <div class="insp-grid" id="inspGrid"></div>
+      <div id="inspGradWrap">
+        <div class="insp-cell"><div class="label">Graduation progress (WETH in pool vs 4.2 threshold)</div></div>
+        <div class="gradbar"><div class="meter"><div class="fill" id="inspGradFill" style="width:0%"></div></div><span class="meter-val" id="inspGradVal">—</span></div>
+      </div>
+      <div class="insp-factors" id="inspFactors"></div>
+      <div class="insp-links" id="inspLinks"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Launch rate — last 24 hours <span class="scan-status" id="scanStatus"></span></h2>
+    <div class="desc">New tokens per hour on the active factory — every <code>TokenLaunched</code> event, counted directly from chain logs (no sampling)</div>
+    <svg id="rateChart" width="100%" viewBox="0 0 1020 240" role="img" aria-label="Column chart of hourly launch rate over the last 24 hours"></svg>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Live launch feed</h2>
+      <div class="desc">Most recent launches on the active factory — refreshes every 60s. Click a token to inspect it. Red badge = serial deployer (launches by that wallet in the last 24h).</div>
+      <table class="feed-table" id="feedTable">
+        <thead><tr><th>Token</th><th>Age</th><th>Creator</th></tr></thead>
+        <tbody><tr><td colspan="3" style="color:var(--text-muted)">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Graduation radar</h2>
+      <div class="desc" id="radarDesc">Newest launches closest to the 4.2 WETH graduation threshold (WETH balance of each launch pool, read live). Click to inspect.</div>
+      <div id="radarGrads" style="display:none;font-size:12px;margin-bottom:8px"></div>
+      <div id="radarList"><span style="font-size:12px;color:var(--text-muted)">Scanning pools…</span></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Creator concentration — last 24h</h2>
+      <div class="desc" id="creatorDesc">Computed from all launches in the last 24 hours</div>
+      <div class="kpis" style="grid-template-columns:1fr 1fr;margin-bottom:0">
+        <div class="tile" style="border:none;padding:8px 0">
+          <div class="label">Distinct creators</div>
+          <div class="value" id="crDistinct">…</div>
+        </div>
+        <div class="tile" style="border:none;padding:8px 0">
+          <div class="label">Most active single creator</div>
+          <div class="value" id="crTop">…</div>
+        </div>
+      </div>
+      <div class="meterrow">
+        <span style="font-size:12px;color:var(--text-secondary)">Top-creator share</span>
+        <div class="meter"><div class="fill" id="crShareFill" style="width:0%"></div></div>
+        <span class="meter-val" id="crShareVal">—</span>
+      </div>
+      <div class="note" style="font-size:11px;color:var(--text-muted);margin-top:10px" id="crRunners">Serial deployers feed directly into the safety score.</div>
+    </div>
+    <div class="card">
+      <h2>What happens after launch</h2>
+      <div class="desc">Random sample: 12 tokens launched in one 15-minute window (28 Jul), re-checked live on refresh</div>
+      <svg id="survivalChart" width="100%" viewBox="0 0 480 74" role="img" aria-label="Stacked bar of post-launch outcomes for 12 sampled tokens"></svg>
+      <div class="legend" id="survivalLegend"></div>
+      <div class="meterrow" title="0 of 12 sampled tokens reached the 4.2 WETH graduation threshold">
+        <span style="font-size:12px;color:var(--text-secondary)">Graduated in sample</span>
+        <div class="meter"><div class="fill" id="sampleGradFill" style="width:0%"></div></div>
+        <span class="meter-val" id="sampleGradVal">0 / 12</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Safety signals — sampled launches</h2>
+    <div class="desc">Rule-based heuristic score (0–100) from on-chain signals: creator's serial-launch activity, market state, and real holders outside the liquidity pool. <strong>Not an audit, not financial advice</strong> — a screening aid.</div>
+    <table id="safetyTable">
+      <thead><tr><th>Token</th><th>Creator activity</th><th>Market</th><th>Holders (non-pool)</th><th>Score</th><th>Verdict</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="note" style="font-size:11px;color:var(--text-muted);margin-top:10px">
+      Formula: base 50 · single-launch creator +20, repeat (2–4) −5, serial (≥5 in window) −25 · actively traded +10, quiet +5, not indexed −10 · ≥3 real holders +15, 1–2 +5, zero holders despite &gt;$1K volume −30 (wash-trading signal), zero holders −5 · graduated +10. Unknown factors score 0. Score is clamped to 5–95.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Sampled launches — market detail</h2>
+    <div class="desc">All 12 tokens from the sampled window (table view backs the sample charts above)</div>
+    <table id="tokenTable">
+      <thead><tr><th>Token</th><th>Address</th><th>Price</th><th>Vol 24h</th><th>Liquidity</th><th>FDV</th><th>Status</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <footer>
+    <strong>Method &amp; sources.</strong> All launch data comes from <code>TokenLaunched</code> logs on the active pons factory (0xA5aA…1feB), read directly from the official Robinhood Chain RPC (<code>rpc.mainnet.chain.robinhood.com</code>) in your browser — the launch-rate chart is an exact count, not an extrapolation. Graduation progress is the WETH balance of each launch pool vs the 4.2 WETH threshold. Burn figures are the PONS balance of <code>0x…dEaD</code> plus 24h Transfer logs into it. Market data: DexScreener public API. Holder data: Blockscout API. Contract addresses and event signatures from <a href="https://docs.ponsfamily.com" target="_blank" rel="noopener">docs.ponsfamily.com</a>. The legacy factory (0x0c37…77a4) is near-inactive (~3 launches per 100K blocks) and is excluded from rate/feed; the inspector searches both factories.<br>
+    <strong>Live refresh.</strong> Launch feed refreshes every 60s; market, holder, burn and radar data every 5 minutes; the full 24h scan every 30 minutes (and on "Refresh now"). If the RPC or APIs are unreachable from your network, the page falls back to the 28 Jul snapshot — the pill next to the title shows which mode you're in.<br>
+    <strong>About pons.</strong> Fixed-supply (1B) token launches against WETH; pool fee 1%; graduation at 4.2 WETH; creator earns 70% of trading fees (90% on legacy launches); 80% of protocol fees are TWAP-bought back into PONS and burned. Community takeovers of abandoned tokens are possible via the official CTO process. pons reportedly accounts for over half of all Robinhood Chain transactions (The Crypto Times, 27 Jul 2026); a V2 with RWAs and ETH-denominated fees has been reported (BSCN, Jul 2026).<br>
+    <strong>Limitations.</strong> "Graduated" is proxied via pool WETH balance vs the 4.2 threshold; holder counts exclude the pool, factories, locker and burn addresses and require &gt;1 token; the safety score is a heuristic screen, not a contract audit; creator activity in the inspector covers roughly the last 28 hours of blocks.<br>
+    Independent community project — not affiliated with pons or Robinhood. Nothing here is financial advice.
+  </footer>
+
+</div>
+<div class="tooltip" id="tip"></div>
+</div>
+<script>
+(function () {
+  'use strict';
+  /* ================= CONSTANTS ================= */
+  const RPC = 'https://rpc.mainnet.chain.robinhood.com';
+  const FACTORY = '0xa5aab3f0c6eeadf30ef1d3eb997108e976351feb';
+  const LEGACY_FACTORY = '0x0c37a24f5d23a486fa692d1500881d698b1f77a4';
+  const LOCKER = '0x736d76699c26d0d966744cae304c000d471f7f35';
+  const LEGACY_LOCKER = '0x31ca5e101941a93a7dd6d0497928700625cf54b5';
+  const WETH = '0x0bd7d308f8e1639fab988df18a8011f41eacad73';
+  const PONS_ADDR = '0x39dbed3a2bd333467115de45665cc57f813c4571';
+  const DEAD = '0x000000000000000000000000000000000000dead';
+  const TOPIC_LAUNCH = '0xdb51ea9ad51ab453a65a4cb7e60c3cb378c9501bb002609f8f97778fb6c4235a';
+  const TOPIC_TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+  const FACTORY_START = 8991118;    // first active-factory launch block (per docs)
+  const LEGACY_START = 8600612;
+  const GRAD_WEI = 42n * 10n ** 17n; // 4.2 WETH
+  const DAY_BLOCKS = 864000;         // ~24h at ~10 blocks/s (calibrated at runtime)
+  const HOUR_BLOCKS = 36000;
+
+  /* ================= SMALL HELPERS ================= */
+  const $ = id => document.getElementById(id);
+  const hexNum = h => parseInt(h, 16);
+  const hexBig = h => BigInt(h);
+  const topicAddr = t => '0x' + t.slice(26);
+  const pad32 = a => '0x' + a.toLowerCase().replace('0x', '').padStart(64, '0');
+  const shortAddr = a => a.slice(0, 6) + '…' + a.slice(-4);
+  const isAddr = a => /^0x[0-9a-fA-F]{40}$/.test(a);
+  function fmtUsd(v) {
+    if (v == null) return '—';
+    if (v >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M';
+    if (v >= 1e3) return '$' + Math.round(v).toLocaleString('en-US');
+    return '$' + (v >= 1 ? Math.round(v) : v);
+  }
+  function fmtWeth(wei) { return (Number(wei / 10n ** 12n) / 1e6).toFixed(3); }
+  function fmtCompact(n) {
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return String(Math.round(n));
+  }
+  function timeAgo(sec) {
+    if (sec < 60) return Math.max(1, Math.round(sec)) + 's ago';
+    if (sec < 3600) return Math.round(sec / 60) + 'm ago';
+    if (sec < 86400) return (sec / 3600).toFixed(1) + 'h ago';
+    return (sec / 86400).toFixed(1) + 'd ago';
+  }
+  function decodeAbiString(hex) {
+    try {
+      if (!hex || hex === '0x') return null;
+      const d = hex.slice(2);
+      const len = parseInt(d.slice(64, 128), 16);
+      if (!len || len > 256) return null;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = parseInt(d.substr(128 + i * 2, 2), 16);
+      const out = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      return out.replace(/[\u0000-\u001F\u007F\uFFFD]/g, '').trim() || null;
+    } catch (e) { return null; }
+  }
+
+  /* ================= RPC ================= */
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function retry(fn, tries, baseDelay) {
+    tries = tries || 3;
+    let lastErr;
+    for (let i = 0; i < tries; i++) {
+      try { return await fn(); } catch (e) { lastErr = e; if (i < tries - 1) await sleep((baseDelay || 600) * Math.pow(2, i)); }
+    }
+    throw lastErr;
+  }
+  let rpcId = 1;
+  async function rpc(method, params, timeoutMs) {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), timeoutMs || 30000);
+    try {
+      const res = await fetch(RPC, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method, params }),
+        signal: ctrl.signal
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json();
+      if (j.error) throw new Error(j.error.message || 'RPC error');
+      return j.result;
+    } finally { clearTimeout(to); }
+  }
+  async function rpcBatch(calls, timeoutMs) {
+    if (!calls.length) return [];
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), timeoutMs || 45000);
+    try {
+      const body = calls.map(c => ({ jsonrpc: '2.0', id: rpcId++, method: c.method, params: c.params }));
+      const res = await fetch(RPC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json();
+      const byId = {}; (Array.isArray(j) ? j : [j]).forEach(r => { byId[r.id] = r; });
+      return body.map(b => { const r = byId[b.id]; return r && !r.error ? r.result : null; });
+    } finally { clearTimeout(to); }
+  }
+  const ethCall = (to, data) => ({ method: 'eth_call', params: [{ to, data }, 'latest'] });
+  const balOf = (token, holder) => ethCall(token, '0x70a08231' + pad32(holder).slice(2));
+  async function fetchJson(url) {
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+
+  /* ================= STATE ================= */
+  const chain = { latestBlock: 0, latestTs: 0, bps: 10 }; // blocks per second, calibrated
+  let launches = [];            // {block, token, creator, pool} newest-first, ~last 24h
+  let scannedFromBlock = 0;     // oldest block covered by `launches`
+  const creatorCounts = new Map();
+  const symbolCache = new Map();
+  let rpcLive = false, scanning = false, refreshing = false;
+  const SNAPSHOT_LABEL = 'Snapshot · 28 Jul 2026 06:30 UTC+3';
+
+  const pill = $('livePill'), liveText = $('liveText');
+  function setPill(ok, text) {
+    liveText.textContent = text;
+    pill.classList.toggle('on', ok);
+  }
+  const blockTime = b => chain.latestTs - (chain.latestBlock - b) / chain.bps;
+
+  /* ================= TOOLTIP / THEME ================= */
+  const root = document.documentElement;
+  $('themeToggle').addEventListener('click', () => {
+    const cur = root.getAttribute('data-theme');
+    const preferDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = cur ? cur === 'dark' : preferDark;
+    root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  });
+  const tip = $('tip');
+  function showTip(evt, valueText, labelText) {
+    tip.style.display = 'block';
+    tip.replaceChildren();
+    const v = document.createElement('div'); v.className = 't-val'; v.textContent = valueText;
+    const l = document.createElement('div'); l.className = 't-lab'; l.textContent = labelText;
+    tip.append(v, l);
+    const x = Math.min(evt.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+    const y = Math.min(evt.clientY + 14, window.innerHeight - tip.offsetHeight - 8);
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  function hideTip() { tip.style.display = 'none'; }
+  const NS = 'http://www.w3.org/2000/svg';
+  function el(name, attrs, parent) {
+    const n = document.createElementNS(NS, name);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  /* ================= SNAPSHOT DATA (fallback + sample cohort) ================= */
+  // Sampled 28 Jul 2026 ~06:30 UTC+3. creatorN = launches by this creator in the sampled window (null = unknown).
+  const TOKENS = [
+    { addr: '0xadb738a0c9aeb8d98e9ff1c379e6200038c6b6da', sym: 'VHOOD', name: 'Vladhood', creatorN: 1, indexed: true, price: 0.0000026, vol: 4289, liq: 2585, fdv: 2585, holders: 3, pool: '0xcbd2ba809ad0afd5909cfb7e5764ce7f90ba4a04' },
+    { addr: '0x35679fd5bd49e209c7012209a34632ceb71d366b', sym: 'DOGSHIT', name: 'Dogshit', creatorN: 1, indexed: true, price: 0.0000026, vol: 3397, liq: 2582, fdv: 2582, holders: null, pool: null },
+    { addr: '0xf37832d8fee09f1eeaf52ebdae474d378e57cf1f', sym: 'HOODSPOT', name: 'Hoodspot', creatorN: 1, indexed: true, price: 0.0000025, vol: 205, liq: 2546, fdv: 2546, holders: null, pool: null },
+    { addr: '0x744ffdae51ac94c40f12917e7e81539b9d4a33d3', sym: 'RIALTO', name: 'RIALTO', creatorN: 1, indexed: true, price: 0.0000025, vol: 183, liq: 2546, fdv: 2546, holders: null, pool: null },
+    { addr: '0x0b9d8c12485b41df99babbe97522ffabdd709e60', sym: 'CANDLE', name: 'Candle Cat', creatorN: null, indexed: true, price: 0.0000026, vol: 29535, liq: 2583, fdv: 2583, holders: 0, pool: '0xe8830e0d2f317a7b3c3881f1817c694b3bd02549' },
+    { addr: '0x4631208e9cc518c9b285b895026388a9fcb0e636', sym: 'CHAT', name: 'robinchat', creatorN: null, indexed: true, price: 0.0000025, vol: 352, liq: 2549, fdv: 2549, holders: null, pool: null },
+    { addr: '0x62bd2aa7052801e0b9f1dcfc97188fab8b330d3c', sym: 'SCREAM', name: 'Scared Hamster', creatorN: null, indexed: true, price: 0.0000025, vol: 2, liq: 2547, fdv: 2547, holders: null, pool: null },
+    { addr: '0x234ff13c02e78ee8e3fea0aa99f9527c4ca1d6f3', sym: '—', name: 'Unindexed token', creatorN: 13, indexed: false, price: null, vol: null, liq: null, fdv: null, holders: null, pool: null },
+    { addr: '0x236c96af43b9ed486f6cae5b7633425cc960249c', sym: '—', name: 'Unindexed token', creatorN: 13, indexed: false, price: null, vol: null, liq: null, fdv: null, holders: null, pool: null },
+    { addr: '0x81e8bc268d9904aa819f47b781efc3a22c96a287', sym: '—', name: 'Unindexed token', creatorN: 8, indexed: false, price: null, vol: null, liq: null, fdv: null, holders: null, pool: null },
+    { addr: '0x41f260bc871c57780b20539be11e9a9815ab97b2', sym: '—', name: 'Unindexed token', creatorN: 1, indexed: false, price: null, vol: null, liq: null, fdv: null, holders: null, pool: null },
+    { addr: '0x2170608f3e3c034ff9b6f664bfa4eff8d24cce71', sym: '—', name: 'Unindexed token', creatorN: null, indexed: false, price: null, vol: null, liq: null, fdv: null, holders: null, pool: null }
+  ];
+  const SNAPSHOT_RATE = [
+    { t: '-24h', v: 240 }, { t: '-21h', v: 200 }, { t: '-18h', v: 200 },
+    { t: '-15h', v: 200 }, { t: '-12h', v: 400 }, { t: '-9h', v: 200 },
+    { t: '-6h', v: 200 }, { t: '-3h', v: 400 }, { t: 'now', v: 200 }
+  ];
+
+  /* ================= SAFETY SCORE ================= */
+  function scoreToken(t) {
+    let s = 50;
+    const factors = [];
+    if (t.creatorN === 1) { s += 20; factors.push('single-launch creator +20'); }
+    else if (t.creatorN != null && t.creatorN >= 5) { s -= 25; factors.push('serial creator (' + t.creatorN + ' in window) −25'); }
+    else if (t.creatorN != null && t.creatorN >= 2) { s -= 5; factors.push('repeat creator −5'); }
+    else factors.push('creator unknown ±0');
+    if (t.indexed) {
+      if ((t.vol || 0) > 1000) { s += 10; factors.push('actively traded +10'); }
+      else { s += 5; factors.push('quiet market +5'); }
+    } else { s -= 10; factors.push('not indexed −10'); }
+    if (t.holders == null) factors.push('holders unknown ±0');
+    else if (t.holders >= 3) { s += 15; factors.push(t.holders + ' real holders +15'); }
+    else if (t.holders >= 1) { s += 5; factors.push(t.holders + ' real holders +5'); }
+    else if ((t.vol || 0) > 1000) { s -= 30; factors.push('zero holders despite volume −30 (wash signal)'); }
+    else { s -= 5; factors.push('zero holders −5'); }
+    if (t.graduated) { s += 10; factors.push('graduated (≥4.2 WETH pool) +10'); }
+    return { score: Math.max(5, Math.min(95, s)), factors };
+  }
+  function verdict(score) {
+    if (score >= 70) return { text: 'No red flags', icon: '✓', color: 'var(--status-good)' };
+    if (score >= 40) return { text: 'Mixed signals', icon: '!', color: 'var(--status-warning)' };
+    return { text: 'Red flags', icon: '✕', color: 'var(--status-critical)' };
+  }
+
+  /* ================= CHAIN ANCHOR ================= */
+  async function calibrate() {
+    const latest = await rpc('eth_getBlockByNumber', ['latest', false], 15000);
+    chain.latestBlock = hexNum(latest.number);
+    chain.latestTs = hexNum(latest.timestamp);
+    try {
+      const old = await rpc('eth_getBlockByNumber', ['0x' + (chain.latestBlock - DAY_BLOCKS).toString(16), false], 15000);
+      const dt = chain.latestTs - hexNum(old.timestamp);
+      if (dt > 0) chain.bps = DAY_BLOCKS / dt;
+    } catch (e) { /* keep default 10 bps */ }
+    rpcLive = true;
+  }
+
+  /* ================= 24H SCAN (exact launch counts) ================= */
+  const CHUNK = 96000; // ~2.7h per getLogs call
+  async function getLaunchLogs(fromBlock, toBlock, address) {
+    const res = await rpc('eth_getLogs', [{
+      fromBlock: '0x' + fromBlock.toString(16), toBlock: '0x' + toBlock.toString(16),
+      address: address || FACTORY, topics: [TOPIC_LAUNCH]
+    }], 60000);
+    // TokenLaunched: topics = [sig, token, creator, deployer]; data word0 = quote (WETH), word1 = pool
+    return (res || []).map(l => ({
+      block: hexNum(l.blockNumber),
+      token: topicAddr(l.topics[1]),
+      creator: topicAddr(l.topics[2]),
+      pool: '0x' + l.data.slice(90, 130)
+    }));
+  }
+
+  async function scan24h() {
+    if (scanning || !rpcLive) return;
+    scanning = true;
+    const status = $('scanStatus');
+    const top = chain.latestBlock;
+    const bottom = top - DAY_BLOCKS;
+    const all = [];
+    try {
+      for (let i = 0; i < 9; i++) {
+        const to = top - i * CHUNK;
+        const from = Math.max(bottom, to - CHUNK + 1);
+        status.textContent = '· scanning chain ' + (i + 1) + '/9…';
+        const logs = await retry(() => getLaunchLogs(from, to), 3, 1000);
+        all.push(...logs);
+        launches = all.slice().sort((a, b) => b.block - a.block);
+        scannedFromBlock = from;
+        renderRateChart();
+        if (i === 0) renderFeed();
+        if (from === bottom) break;
+        await sleep(350);
+      }
+      status.textContent = '';
+      $('kpiLaunches').textContent = launches.length.toLocaleString('en-US');
+      $('kpiLaunchesNote').textContent = 'Exact on-chain count · active factory · live';
+    } catch (e) {
+      status.textContent = '· partial scan (last ' + Math.round((chain.latestBlock - scannedFromBlock) / HOUR_BLOCKS) + 'h shown) — retries in 30 min';
+      if (launches.length) {
+        $('kpiLaunches').textContent = '≥' + launches.length.toLocaleString('en-US');
+        $('kpiLaunchesNote').textContent = 'Partial count — scan will retry';
+      }
+    }
+    renderCreators();
+    renderFeed();
+    scanning = false;
+  }
+
+  /* ================= LAUNCH RATE CHART ================= */
+  function renderRateChart() {
+    const svg = $('rateChart');
+    svg.replaceChildren();
+    const W = 1020, H = 240, padL = 46, padR = 12, padT = 18, padB = 28;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    let bars, live = rpcLive && launches.length;
+    if (live) {
+      const buckets = new Array(24).fill(0);
+      launches.forEach(l => {
+        const hrAgo = Math.floor((chain.latestBlock - l.block) / HOUR_BLOCKS);
+        if (hrAgo >= 0 && hrAgo < 24) buckets[hrAgo]++;
+      });
+      const covered = Math.min(24, Math.ceil((chain.latestBlock - scannedFromBlock) / HOUR_BLOCKS));
+      bars = buckets.map((v, i) => ({ t: i === 0 ? 'now' : '-' + i + 'h', v, pending: i >= covered })).reverse();
+    } else {
+      bars = SNAPSHOT_RATE.map(d => ({ t: d.t, v: d.v, pending: false }));
+    }
+    const maxV = Math.max(100, Math.ceil(Math.max(...bars.map(b => b.v)) / 100) * 100);
+    const steps = 4;
+    for (let i = 0; i <= steps; i++) {
+      const v = Math.round(maxV / steps * i);
+      const y = padT + plotH - (v / maxV) * plotH;
+      el('line', { x1: padL, x2: W - padR, y1: y, y2: y, stroke: v === 0 ? 'var(--baseline)' : 'var(--grid)', 'stroke-width': 1 }, svg);
+      const t = el('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', class: 'axis-tick' }, svg);
+      t.textContent = v.toLocaleString('en-US');
+    }
+    const band = plotW / bars.length, barW = Math.min(24, band * 0.7);
+    let peak = Math.max(...bars.map(b => b.v));
+    bars.forEach((d, i) => {
+      const h = Math.max(d.v > 0 ? 2 : 0, (d.v / maxV) * plotH);
+      const x = padL + i * band + (band - barW) / 2;
+      const y = padT + plotH - h;
+      if (h > 0) el('path', {
+        d: 'M' + x + ',' + (y + 4) + ' a4,4 0 0 1 4,-4 h' + (barW - 8) + ' a4,4 0 0 1 4,4 v' + (h - 4) + ' h' + (-barW) + ' Z',
+        fill: d.pending ? 'var(--grid)' : 'var(--series-1)'
+      }, svg);
+      if (!d.pending && (d.v === peak || i === bars.length - 1) && d.v > 0) {
+        const t = el('text', { x: x + barW / 2, y: y - 6, 'text-anchor': 'middle', class: 'cap-label' }, svg);
+        t.textContent = d.v;
+      }
+      if (i % (bars.length > 12 ? 3 : 1) === 0 || i === bars.length - 1) {
+        const tx = el('text', { x: padL + i * band + band / 2, y: H - 8, 'text-anchor': 'middle', class: 'axis-tick' }, svg);
+        tx.textContent = d.t;
+      }
+      const hit = el('rect', { x: padL + i * band, y: padT, width: band, height: plotH, fill: 'transparent' }, svg);
+      hit.addEventListener('pointermove', e => showTip(e, d.pending ? 'scanning…' : d.v + ' launches', 'hour window at ' + d.t + (live ? ' · exact count' : ' · snapshot sample')));
+      hit.addEventListener('pointerleave', hideTip);
+    });
+  }
+
+  /* ================= SYMBOLS ================= */
+  async function fetchSymbols(addrs) {
+    const need = [...new Set(addrs.map(a => a.toLowerCase()))].filter(a => !symbolCache.has(a));
+    for (let i = 0; i < need.length; i += 40) {
+      const batch = need.slice(i, i + 40);
+      try {
+        const res = await retry(() => rpcBatch(batch.map(a => ethCall(a, '0x95d89b41'))), 2, 800);
+        res.forEach((r, j) => symbolCache.set(batch[j], decodeAbiString(r) || shortAddr(batch[j])));
+      } catch (e) { batch.forEach(a => { if (!symbolCache.has(a)) symbolCache.set(a, shortAddr(a)); }); }
+      if (i + 40 < need.length) await sleep(300);
+    }
+  }
+  const sym = a => symbolCache.get(a.toLowerCase()) || shortAddr(a);
+
+  /* ================= LIVE FEED ================= */
+  async function refreshFeedData() {
+    if (!rpcLive) return;
+    try {
+      const latestHex = await rpc('eth_blockNumber', [], 10000);
+      const nb = hexNum(latestHex);
+      if (nb > chain.latestBlock) {
+        chain.latestTs += (nb - chain.latestBlock) / chain.bps;
+        chain.latestBlock = nb;
+      }
+      const from = launches.length ? launches[0].block + 1 : nb - 9000;
+      if (nb >= from) {
+        const logs = await getLaunchLogs(from, nb);
+        if (logs.length) {
+          launches = logs.sort((a, b) => b.block - a.block).concat(launches);
+          renderRateChart();
+          renderCreators();
+          if (!scanning) $('kpiLaunches').textContent = launches.filter(l => l.block > chain.latestBlock - DAY_BLOCKS).length.toLocaleString('en-US');
+        }
+      }
+      setPill(true, 'Live · block ' + chain.latestBlock.toLocaleString('en-US'));
+      await renderFeed();
+    } catch (e) { /* transient */ }
+  }
+
+  async function renderFeed() {
+    const tbody = document.querySelector('#feedTable tbody');
+    if (!launches.length) return;
+    const items = launches.slice(0, 12);
+    await fetchSymbols(items.map(l => l.token));
+    tbody.replaceChildren();
+    items.forEach(l => {
+      const n = creatorCounts.get(l.creator) || 1;
+      const tr = document.createElement('tr');
+      const tdT = document.createElement('td');
+      const s = document.createElement('span'); s.className = 'feed-sym'; s.textContent = sym(l.token);
+      s.title = l.token; s.addEventListener('click', () => { $('inspInput').value = l.token; inspect(l.token); });
+      tdT.appendChild(s);
+      if (n >= 5) { const w = document.createElement('span'); w.className = 'warnchip'; w.textContent = '×' + n; w.title = n + ' launches by this creator in the scanned window'; tdT.appendChild(w); }
+      tr.appendChild(tdT);
+      const tdA = document.createElement('td');
+      tdA.textContent = timeAgo(Math.max(1, (Date.now() / 1000) - blockTime(l.block)));
+      tdA.style.color = 'var(--text-secondary)';
+      tr.appendChild(tdA);
+      const tdC = document.createElement('td'); tdC.className = 'mono';
+      const link = document.createElement('a');
+      link.href = 'https://robinhoodchain.blockscout.com/address/' + l.creator;
+      link.target = '_blank'; link.rel = 'noopener'; link.textContent = shortAddr(l.creator);
+      tdC.appendChild(link); tr.appendChild(tdC);
+      tbody.appendChild(tr);
+    });
+  }
+
+  /* ================= GRADUATION RADAR ================= */
+  async function gradRadar() {
+    if (!rpcLive || !launches.length) return;
+    const list = $('radarList'), gradsEl = $('radarGrads');
+    const recent = launches.filter(l => l.block > chain.latestBlock - CHUNK).slice(0, 400);
+    if (!recent.length) { list.textContent = 'No recent launches found.'; return; }
+    const balances = [];
+    await sleep(800);
+    let failed = 0;
+    for (let i = 0; i < recent.length; i += 40) {
+      const batch = recent.slice(i, i + 40);
+      try {
+        const res = await retry(() => rpcBatch(batch.map(l => balOf(WETH, l.pool))), 4, 1200);
+        res.forEach((r, j) => { if (r) balances.push({ l: batch[j], bal: hexBig(r) }); });
+      } catch (e) { failed++; }
+      if (i + 40 < recent.length) await sleep(350);
+    }
+    if (!balances.length) { list.textContent = 'Pool scan failed — retrying on next refresh.'; return; }
+    const oldest = recent[recent.length - 1].block;
+    const winMin = Math.round((chain.latestBlock - oldest) / chain.bps / 60);
+    $('radarDesc').textContent = 'The ' + recent.length + ' newest launches (last ~' + (winMin >= 90 ? (winMin / 60).toFixed(1) + 'h' : winMin + ' min') + ') ranked by WETH in their pool vs the 4.2 WETH graduation threshold — read live. Click to inspect.';
+    balances.sort((a, b) => (a.bal < b.bal ? 1 : a.bal > b.bal ? -1 : 0));
+    const grads = balances.filter(b => b.bal >= GRAD_WEI);
+    const top = balances.filter(b => b.bal < GRAD_WEI).slice(0, 8);
+    await fetchSymbols(grads.slice(0, 6).map(g => g.l.token).concat(top.map(t => t.l.token)));
+    gradsEl.style.display = grads.length ? 'block' : 'none';
+    if (grads.length) {
+      gradsEl.replaceChildren();
+      const strong = document.createElement('strong'); strong.textContent = '🎓 Graduated in this window: ';
+      gradsEl.appendChild(strong);
+      grads.slice(0, 6).forEach((g, i) => {
+        if (i) gradsEl.appendChild(document.createTextNode(' · '));
+        const a = document.createElement('span'); a.className = 'feed-sym'; a.textContent = sym(g.l.token);
+        a.addEventListener('click', () => { $('inspInput').value = g.l.token; inspect(g.l.token); });
+        gradsEl.appendChild(a);
+      });
+      if (grads.length > 6) gradsEl.appendChild(document.createTextNode(' +' + (grads.length - 6) + ' more'));
+    }
+    list.replaceChildren();
+    if (!top.length) { list.textContent = 'No pools with balance found in this window.'; return; }
+    top.forEach(({ l, bal }) => {
+      const pct = Math.min(100, Number(bal * 1000n / GRAD_WEI) / 10);
+      const row = document.createElement('div'); row.className = 'radar-row';
+      const s = document.createElement('span'); s.className = 'radar-sym'; s.textContent = sym(l.token); s.title = l.token;
+      s.addEventListener('click', () => { $('inspInput').value = l.token; inspect(l.token); });
+      const meter = document.createElement('div'); meter.className = 'meter';
+      const fill = document.createElement('div'); fill.className = 'fill'; fill.style.width = pct + '%';
+      if (pct >= 60) fill.style.background = 'var(--status-good)';
+      meter.appendChild(fill);
+      const val = document.createElement('span'); val.className = 'radar-val'; val.textContent = fmtWeth(bal) + ' / 4.2';
+      row.append(s, meter, val);
+      row.addEventListener('pointermove', e => showTip(e, pct.toFixed(1) + '% to graduation', fmtWeth(bal) + ' WETH in pool · ' + sym(l.token)));
+      row.addEventListener('pointerleave', hideTip);
+      list.appendChild(row);
+    });
+  }
+
+  /* ================= CREATOR STATS ================= */
+  function renderCreators() {
+    if (!launches.length) return;
+    creatorCounts.clear();
+    const window24 = launches.filter(l => l.block > chain.latestBlock - DAY_BLOCKS);
+    window24.forEach(l => creatorCounts.set(l.creator, (creatorCounts.get(l.creator) || 0) + 1));
+    const total = window24.length;
+    if (!total) return;
+    const sorted = [...creatorCounts.entries()].sort((a, b) => b[1] - a[1]);
+    $('creatorDesc').textContent = 'Computed from all ' + total.toLocaleString('en-US') + ' launches in the scanned window (live)';
+    $('crDistinct').replaceChildren();
+    $('crDistinct').append(creatorCounts.size.toLocaleString('en-US'), Object.assign(document.createElement('span'), { textContent: ' / ' + total.toLocaleString('en-US') + ' launches', style: 'font-size:14px;color:var(--text-muted)' }));
+    $('crTop').replaceChildren();
+    $('crTop').append(String(sorted[0][1]), Object.assign(document.createElement('span'), { textContent: ' launches', style: 'font-size:14px;color:var(--text-muted)' }));
+    const share = Math.round(sorted[0][1] / total * 100);
+    $('crShareFill').style.width = share + '%';
+    $('crShareVal').textContent = share + '%';
+    const serial = sorted.filter(s => s[1] >= 5).length;
+    const runners = sorted.slice(1, 4).map(s => s[1]).join(', ');
+    $('crRunners').textContent = 'Runners-up: ' + runners + ' launches by single wallets · ' + serial + ' wallets with ≥5 launches in the window. Serial deployers feed directly into the safety score.';
+  }
+
+  /* ================= INSPECTOR ================= */
+  let inspecting = false;
+  async function findLaunch(addr) {
+    const a = addr.toLowerCase();
+    const cached = launches.find(l => l.token === a);
+    if (cached) return { ...cached, factory: FACTORY };
+    const t = pad32(a);
+    const tryRange = async (address, from, to) => {
+      const res = await rpc('eth_getLogs', [{ fromBlock: '0x' + from.toString(16), toBlock: to, address, topics: [TOPIC_LAUNCH, t] }], 60000);
+      return res && res.length ? res[0] : null;
+    };
+    let log = await tryRange(FACTORY, Math.max(FACTORY_START, chain.latestBlock - 1000000), 'latest');
+    if (!log) {
+      $('inspStatus').textContent = 'Searching full factory history (can take ~20s)…';
+      log = await tryRange(FACTORY, FACTORY_START, 'latest');
+    }
+    const decode = (lg, factory) => ({ block: hexNum(lg.blockNumber), token: a, creator: topicAddr(lg.topics[2]), pool: '0x' + lg.data.slice(90, 130), factory });
+    if (!log) {
+      $('inspStatus').textContent = 'Searching legacy factory…';
+      log = await tryRange(LEGACY_FACTORY, LEGACY_START, 'latest');
+      return log ? decode(log, LEGACY_FACTORY) : null;
+    }
+    return decode(log, FACTORY);
+  }
+
+  async function creatorActivity(creator) {
+    try {
+      const from = Math.max(FACTORY_START, chain.latestBlock - 1000000);
+      const res = await rpc('eth_getLogs', [{ fromBlock: '0x' + from.toString(16), toBlock: 'latest', address: FACTORY, topics: [TOPIC_LAUNCH, null, pad32(creator)] }], 60000);
+      return res ? res.length : null;
+    } catch (e) { return null; }
+  }
+
+  async function fetchHolders(addr, pool) {
+    try {
+      const data = await fetchJson('https://robinhoodchain.blockscout.com/api/v2/tokens/' + addr + '/holders');
+      if (!data.items) return null;
+      const excluded = [pool, FACTORY, LEGACY_FACTORY, LOCKER, LEGACY_LOCKER, DEAD].filter(Boolean).map(x => x.toLowerCase());
+      return data.items.filter(h => {
+        const ha = (h.address && h.address.hash || '').toLowerCase();
+        let v; try { v = BigInt(h.value); } catch (e) { v = 0n; }
+        return ha && !excluded.includes(ha) && v > 10n ** 18n;
+      }).length;
+    } catch (e) { return null; }
+  }
+
+  function inspCell(label, val, small) {
+    const c = document.createElement('div'); c.className = 'insp-cell';
+    const l = document.createElement('div'); l.className = 'label'; l.textContent = label;
+    const v = document.createElement('div'); v.className = 'val' + (small ? ' small' : '');
+    if (val instanceof Node) v.appendChild(val); else v.textContent = val;
+    c.append(l, v); return c;
+  }
+
+  async function inspect(addrRaw) {
+    const addr = (addrRaw || $('inspInput').value).trim();
+    const status = $('inspStatus'), result = $('inspResult');
+    if (!isAddr(addr)) { status.textContent = 'Enter a valid 0x… address (40 hex characters).'; return; }
+    if (inspecting) return;
+    inspecting = true;
+    $('inspBtn').disabled = true;
+    result.style.display = 'none';
+    status.textContent = 'Looking up launch event…';
+    try {
+      const a = addr.toLowerCase();
+      // Parallel: market data + launch log
+      const [dex, launch] = await Promise.all([
+        fetchJson('https://api.dexscreener.com/latest/dex/tokens/' + a).catch(() => null),
+        rpcLive ? findLaunch(a) : Promise.resolve(null)
+      ]);
+      let pair = null;
+      if (dex && dex.pairs) {
+        const own = dex.pairs.filter(p => (p.baseToken && p.baseToken.address || '').toLowerCase() === a);
+        pair = own.reduce((best, p) => (!best || (p.liquidity && p.liquidity.usd || 0) > (best.liquidity && best.liquidity.usd || 0) ? p : best), null);
+      }
+      // Metadata
+      status.textContent = 'Reading on-chain state…';
+      let name = pair && pair.baseToken.name, symbol = pair && pair.baseToken.symbol;
+      if (!symbol && rpcLive) {
+        try {
+          const [nRes, sRes] = await rpcBatch([ethCall(a, '0x06fdde03'), ethCall(a, '0x95d89b41')]);
+          name = decodeAbiString(nRes); symbol = decodeAbiString(sRes);
+        } catch (e) { /* keep null */ }
+      }
+      // Creator activity + holders + graduation in parallel
+      const [creatorN, holders, poolBalHex] = await Promise.all([
+        launch && rpcLive ? creatorActivity(launch.creator) : Promise.resolve(null),
+        fetchHolders(a, launch && launch.pool),
+        launch && rpcLive ? rpc('eth_call', [{ to: WETH, data: '0x70a08231' + pad32(launch.pool).slice(2) }, 'latest'], 20000).catch(() => null) : Promise.resolve(null)
+      ]);
+      const poolBal = poolBalHex ? hexBig(poolBalHex) : null;
+      const graduated = poolBal != null && poolBal >= GRAD_WEI;
+      const t = {
+        creatorN: creatorN, indexed: !!pair,
+        vol: pair && pair.volume && pair.volume.h24, holders,
+        graduated
+      };
+      const { score, factors } = scoreToken(t);
+      const v = verdict(score);
+      // Render
+      $('inspName').textContent = (symbol ? symbol : shortAddr(a)) + (name && name !== symbol ? ' — ' + name : '');
+      $('inspAddr').textContent = a;
+      const vc = $('inspVerdict'); vc.replaceChildren();
+      const ic = document.createElement('span'); ic.textContent = v.icon; ic.style.color = v.color; ic.style.fontWeight = '700';
+      vc.append(ic, document.createTextNode(' ' + v.text + ' · score ' + score));
+      const grid = $('inspGrid'); grid.replaceChildren();
+      grid.append(
+        inspCell('Price', pair ? '$' + parseFloat(pair.priceUsd).toPrecision(3) : 'not indexed'),
+        inspCell('Volume 24h', pair ? fmtUsd(pair.volume && pair.volume.h24) : '—'),
+        inspCell('Liquidity', pair ? fmtUsd(pair.liquidity && pair.liquidity.usd) : '—'),
+        inspCell('FDV', pair ? fmtUsd(pair.fdv) : '—'),
+        inspCell('Real holders (non-pool)', holders == null ? 'unknown' : String(holders)),
+        inspCell('Creator launches (~28h)', creatorN == null ? 'unknown' : String(creatorN))
+      );
+      if (launch) {
+        const cr = document.createElement('a');
+        cr.href = 'https://robinhoodchain.blockscout.com/address/' + launch.creator;
+        cr.target = '_blank'; cr.rel = 'noopener'; cr.textContent = shortAddr(launch.creator);
+        grid.append(inspCell('Creator', cr, true));
+        grid.append(inspCell('Launched', timeAgo(Math.max(1, Date.now() / 1000 - blockTime(launch.block))) + (launch.factory === LEGACY_FACTORY ? ' · legacy factory' : ''), true));
+      }
+      const gw = $('inspGradWrap');
+      if (poolBal != null) {
+        gw.style.display = 'block';
+        const pct = Math.min(100, Number(poolBal * 1000n / GRAD_WEI) / 10);
+        $('inspGradFill').style.width = pct + '%';
+        $('inspGradFill').style.background = graduated ? 'var(--status-good)' : 'var(--series-1)';
+        $('inspGradVal').textContent = graduated ? '🎓 graduated (' + fmtWeth(poolBal) + ' WETH)' : fmtWeth(poolBal) + ' / 4.2 WETH (' + pct.toFixed(1) + '%)';
+      } else gw.style.display = 'none';
+      const fx = $('inspFactors'); fx.replaceChildren();
+      const fstrong = document.createElement('strong'); fstrong.textContent = 'Score factors: ';
+      fx.append(fstrong, document.createTextNode(factors.join(' · ')));
+      if (!launch && rpcLive) {
+        const warn = document.createElement('div');
+        warn.style.color = 'var(--status-critical)'; warn.style.fontWeight = '600';
+        warn.textContent = '⚠ No pons TokenLaunched event found for this address — it may not be a pons launchpad token.';
+        fx.prepend(warn);
+      }
+      const links = $('inspLinks'); links.replaceChildren();
+      const mk = (href, text) => { const x = document.createElement('a'); x.href = href; x.target = '_blank'; x.rel = 'noopener'; x.textContent = text; return x; };
+      links.append(mk('https://www.ponsfamily.com/launchpad/' + a, 'View on pons ↗'), mk('https://robinhoodchain.blockscout.com/token/' + a, 'Blockscout ↗'));
+      if (pair) links.append(mk('https://dexscreener.com/robinhoodchain/' + pair.pairAddress, 'DexScreener ↗'));
+      status.textContent = '';
+      result.style.display = 'block';
+    } catch (e) {
+      status.textContent = 'Lookup failed: ' + (e && e.message || 'network error') + ' — try again.';
+    }
+    $('inspBtn').disabled = false;
+    inspecting = false;
+  }
+  $('inspBtn').addEventListener('click', () => inspect());
+  $('inspInput').addEventListener('keydown', e => { if (e.key === 'Enter') inspect(); });
+
+  /* ================= PONS MARKET + BURN ================= */
+  async function refreshPons() {
+    const data = await fetchJson('https://api.dexscreener.com/latest/dex/tokens/' + PONS_ADDR);
+    const pairs = (data.pairs || []).filter(p => (p.baseToken && p.baseToken.address || '').toLowerCase() === PONS_ADDR);
+    if (!pairs.length) return;
+    const main = pairs.reduce((a, b) => ((a.liquidity && a.liquidity.usd || 0) >= (b.liquidity && b.liquidity.usd || 0) ? a : b));
+    const totVol = pairs.reduce((s, p) => s + (p.volume && p.volume.h24 || 0), 0);
+    const price = parseFloat(main.priceUsd);
+    if (price) $('ponsPrice').textContent = '$' + (price < 0.01 ? price.toFixed(5) : price.toFixed(4));
+    const ch = main.priceChange && main.priceChange.h24;
+    if (ch != null) {
+      const d = $('ponsDelta');
+      d.textContent = (ch >= 0 ? '+' : '') + Math.round(ch) + '%';
+      d.className = 'delta ' + (ch >= 0 ? 'up' : 'down');
+    }
+    $('ponsVol').textContent = fmtUsd(totVol);
+    const fdv = main.fdv, liq = main.liquidity && main.liquidity.usd;
+    if (fdv && liq) $('ponsVolNote').textContent = 'FDV ' + fmtUsd(fdv) + ' · main-pool liquidity ' + fmtUsd(liq);
+  }
+
+  async function refreshBurn() {
+    if (!rpcLive) return;
+    try {
+      const [balHex, supplyHex] = await rpcBatch([balOf(PONS_ADDR, DEAD), ethCall(PONS_ADDR, '0x18160ddd')]);
+      if (!balHex || !supplyHex) return;
+      const burned = Number(hexBig(balHex) / 10n ** 18n);
+      const supply = Number(hexBig(supplyHex) / 10n ** 18n);
+      $('kpiBurn').textContent = fmtCompact(burned);
+      let burned24 = null;
+      try {
+        const logs = await retry(() => rpc('eth_getLogs', [{
+          fromBlock: '0x' + (chain.latestBlock - DAY_BLOCKS).toString(16), toBlock: 'latest',
+          address: PONS_ADDR, topics: [TOPIC_TRANSFER, null, pad32(DEAD)]
+        }], 45000), 2, 1000);
+        if (logs) burned24 = Number(logs.reduce((s, l) => s + hexBig(l.data), 0n) / 10n ** 18n);
+      } catch (e) { /* optional */ }
+      $('kpiBurnNote').textContent = (supply ? (burned / supply * 100).toFixed(1) + '% of supply' : '') +
+        (burned24 != null ? ' · +' + fmtCompact(burned24) + ' last 24h' : '') + ' · buyback & burn';
+    } catch (e) { /* keep */ }
+  }
+
+  /* ================= SAMPLED COHORT (snapshot + live re-check) ================= */
+  function renderSafetyTable() {
+    const tbody = document.querySelector('#safetyTable tbody');
+    tbody.replaceChildren();
+    const rows = TOKENS.map(t => ({ t, r: scoreToken(t) })).sort((a, b) => b.r.score - a.r.score);
+    rows.forEach(({ t, r }) => {
+      const v = verdict(r.score);
+      const tr = document.createElement('tr');
+      const tdTok = document.createElement('td');
+      const strong = document.createElement('div'); strong.textContent = t.sym !== '—' ? t.sym : shortAddr(t.addr); strong.style.fontWeight = '600'; strong.style.cursor = 'pointer';
+      strong.addEventListener('click', () => { $('inspInput').value = t.addr; inspect(t.addr); });
+      const sub = document.createElement('div'); sub.className = 'factor'; sub.textContent = t.sym !== '—' ? shortAddr(t.addr) : 'no DexScreener pair';
+      tdTok.append(strong, sub); tr.appendChild(tdTok);
+      const tdCr = document.createElement('td');
+      tdCr.textContent = t.creatorN == null ? 'unknown' : (t.creatorN === 1 ? '1 launch in window' : t.creatorN + ' launches in window');
+      if (t.creatorN != null && t.creatorN >= 5) tdCr.style.fontWeight = '600';
+      tr.appendChild(tdCr);
+      const tdMk = document.createElement('td');
+      tdMk.textContent = t.indexed ? ((t.vol || 0) > 1000 ? 'active · ' + fmtUsd(t.vol) : 'quiet · ' + fmtUsd(t.vol)) : 'not indexed';
+      tr.appendChild(tdMk);
+      const tdH = document.createElement('td');
+      tdH.textContent = t.holders == null ? '—' : String(t.holders);
+      tr.appendChild(tdH);
+      const tdS = document.createElement('td');
+      const cell = document.createElement('div'); cell.className = 'score-cell';
+      const num = document.createElement('span'); num.className = 'score-num'; num.textContent = r.score;
+      const meter = document.createElement('div'); meter.className = 'score-meter';
+      meter.style.background = 'color-mix(in oklab, ' + v.color + ' 18%, var(--surface-1))';
+      const fill = document.createElement('div'); fill.className = 'sfill';
+      fill.style.width = r.score + '%'; fill.style.background = v.color;
+      meter.appendChild(fill);
+      cell.append(num, meter); tdS.appendChild(cell);
+      tdS.title = r.factors.join(' · ');
+      tr.appendChild(tdS);
+      const tdV = document.createElement('td');
+      const chip = document.createElement('span'); chip.className = 'chip';
+      const ic = document.createElement('span'); ic.textContent = v.icon; ic.style.color = v.color; ic.style.fontWeight = '700';
+      const lb = document.createElement('span'); lb.textContent = v.text;
+      chip.append(ic, lb); tdV.appendChild(chip); tr.appendChild(tdV);
+      tr.addEventListener('pointermove', e => showTip(e, 'Score ' + r.score + ' — ' + v.text, r.factors.join(' · ')));
+      tr.addEventListener('pointerleave', hideTip);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderDetailTable() {
+    const stMapDyn = t => !t.indexed
+      ? { text: 'Not indexed', color: 'var(--series-3)' }
+      : ((t.vol || 0) > 1000 ? { text: 'Actively traded', color: 'var(--series-1)' } : { text: 'Quiet', color: 'var(--series-2)' });
+    const tbody = document.querySelector('#tokenTable tbody');
+    tbody.replaceChildren();
+    TOKENS.forEach(t => {
+      const tr = document.createElement('tr');
+      const cells = [
+        t.sym, shortAddr(t.addr),
+        t.price == null ? '—' : '$' + t.price.toFixed(7),
+        fmtUsd(t.vol), fmtUsd(t.liq), fmtUsd(t.fdv)
+      ];
+      cells.forEach((c, i) => {
+        const td = document.createElement('td');
+        if (i === 1) td.className = 'mono';
+        td.textContent = c;
+        tr.appendChild(td);
+      });
+      const st = stMapDyn(t);
+      const td = document.createElement('td');
+      const chip = document.createElement('span'); chip.className = 'chip';
+      const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = st.color;
+      const lbl = document.createElement('span'); lbl.textContent = st.text;
+      chip.append(dot, lbl); td.appendChild(chip); tr.appendChild(td);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderSurvival() {
+    const traded = TOKENS.filter(t => t.indexed && (t.vol || 0) > 1000).length;
+    const quiet = TOKENS.filter(t => t.indexed && (t.vol || 0) <= 1000).length;
+    const unidx = TOKENS.filter(t => !t.indexed).length;
+    const gradN = TOKENS.filter(t => t.graduated).length;
+    const seg = [
+      { label: 'Actively traded', n: traded, color: 'var(--series-1)', note: 'vol > $1K / 24h' },
+      { label: 'Quiet', n: quiet, color: 'var(--series-2)', note: 'indexed, vol ≤ $1K' },
+      { label: 'Not indexed', n: unidx, color: 'var(--series-3)', note: 'no DexScreener pair' }
+    ].filter(s => s.n > 0);
+    const svg = $('survivalChart');
+    svg.replaceChildren();
+    const W = 480, total = TOKENS.length, barH = 24, y = 20;
+    let x = 0;
+    seg.forEach((s, i) => {
+      const w = (s.n / total) * W - (i < seg.length - 1 ? 2 : 0);
+      const r = el('rect', { x, y, width: w, height: barH, rx: 4, fill: s.color }, svg);
+      const t = el('text', { x: x + w / 2, y: y + barH / 2 + 4, 'text-anchor': 'middle', class: 'seg-label', fill: '#fff' }, svg);
+      t.textContent = s.n;
+      const pct = el('text', { x: x + w / 2, y: y + barH + 18, 'text-anchor': 'middle', class: 'axis-tick' }, svg);
+      pct.textContent = Math.round(s.n / total * 100) + '%';
+      r.addEventListener('pointermove', e => showTip(e, s.n + ' of ' + total + ' tokens', s.label + ' — ' + s.note));
+      r.addEventListener('pointerleave', hideTip);
+      x += w + 2;
+    });
+    const legend = $('survivalLegend');
+    legend.replaceChildren();
+    seg.forEach(s => {
+      const item = document.createElement('div'); item.className = 'item';
+      const sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = s.color;
+      const tx = document.createElement('span'); tx.textContent = s.label + ' (' + s.note + ')';
+      item.append(sw, tx); legend.appendChild(item);
+    });
+    $('sampleGradFill').style.width = (gradN / total * 100) + '%';
+    $('sampleGradVal').textContent = gradN + ' / ' + total;
+  }
+
+  async function refreshSampleMarket() {
+    const addrs = TOKENS.map(t => t.addr).join(',');
+    const data = await fetchJson('https://api.dexscreener.com/latest/dex/tokens/' + addrs);
+    const byToken = {};
+    (data.pairs || []).forEach(p => {
+      const a = (p.baseToken && p.baseToken.address || '').toLowerCase();
+      if (!byToken[a] || (p.liquidity && p.liquidity.usd || 0) > (byToken[a].liquidity && byToken[a].liquidity.usd || 0)) byToken[a] = p;
+    });
+    TOKENS.forEach(t => {
+      const p = byToken[t.addr.toLowerCase()];
+      if (!p) return;
+      t.indexed = true;
+      t.price = parseFloat(p.priceUsd) || t.price;
+      t.vol = p.volume && p.volume.h24 != null ? p.volume.h24 : t.vol;
+      t.liq = p.liquidity && p.liquidity.usd != null ? p.liquidity.usd : t.liq;
+      t.fdv = p.fdv != null ? p.fdv : t.fdv;
+      t.pool = (p.pairAddress || t.pool || '').toLowerCase() || t.pool;
+      if (p.baseToken.symbol && t.sym === '—') { t.sym = p.baseToken.symbol; t.name = p.baseToken.name || t.name; }
+    });
+  }
+
+  async function refreshSampleGrad() {
+    if (!rpcLive) return;
+    const withPool = TOKENS.filter(t => t.pool);
+    if (!withPool.length) return;
+    try {
+      const res = await rpcBatch(withPool.map(t => balOf(WETH, t.pool)));
+      res.forEach((r, i) => { if (r) withPool[i].graduated = hexBig(r) >= GRAD_WEI; });
+    } catch (e) { /* optional */ }
+  }
+
+  /* ================= ORCHESTRATION ================= */
+  async function refreshAll(fullScan) {
+    if (refreshing) return;
+    refreshing = true;
+    try {
+      await Promise.allSettled([refreshPons(), refreshBurn(), refreshSampleMarket(), refreshSampleGrad()]);
+      renderSafetyTable(); renderDetailTable(); renderSurvival();
+      if (rpcLive) {
+        if (fullScan) await scan24h();
+        await gradRadar();
+        setPill(true, 'Live · block ' + chain.latestBlock.toLocaleString('en-US'));
+      }
+    } catch (e) { /* partial is fine */ }
+    refreshing = false;
+  }
+
+  async function init() {
+    renderSafetyTable(); renderDetailTable(); renderSurvival(); renderRateChart();
+    try {
+      setPill(false, 'Connecting to Robinhood Chain RPC…');
+      await calibrate();
+      setPill(true, 'Live · block ' + chain.latestBlock.toLocaleString('en-US'));
+    } catch (e) {
+      setPill(false, SNAPSHOT_LABEL + ' (RPC unreachable)');
+    }
+    Promise.allSettled([refreshPons(), refreshSampleMarket().then(() => { renderSafetyTable(); renderDetailTable(); renderSurvival(); })]);
+    if (rpcLive) {
+      await refreshBurn();
+      await scan24h();
+      await gradRadar();
+      refreshSampleGrad().then(renderSurvival);
+    }
+    // timers
+    setInterval(refreshFeedData, 60 * 1000);
+    setInterval(() => refreshAll(false), 5 * 60 * 1000);
+    setInterval(() => { if (rpcLive) scan24h(); }, 30 * 60 * 1000);
+  }
+
+  $('refreshBtn').addEventListener('click', () => refreshAll(true));
+  init();
+})();
+</script>
+</body>
+</html>
