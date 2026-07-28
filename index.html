@@ -921,6 +921,12 @@
   }
   $('inspBtn').addEventListener('click', () => inspect());
   $('inspInput').addEventListener('keydown', e => { if (e.key === 'Enter') inspect(); });
+  // deep link: ?token=0x… auto-opens the inspector (used by PonsScanBot announcements)
+  const deepToken = new URLSearchParams(location.search).get('token');
+  if (deepToken && isAddr(deepToken)) {
+    $('inspInput').value = deepToken;
+    setTimeout(() => inspect(deepToken), 1500);
+  }
 
   /* ================= PONS MARKET + BURN ================= */
   async function refreshPons() {
