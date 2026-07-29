@@ -128,10 +128,15 @@
   a { color: var(--series-1); text-decoration: none; }
 
   /* Inspector */
-  .insp-row { display: flex; gap: 8px; flex-wrap: wrap; }
-  .insp-row input { flex: 1; min-width: 260px; font: inherit; font-size: 13px; font-family: ui-monospace, monospace; color: var(--text-primary); background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; outline: none; }
-  .insp-row input:focus { border-color: var(--series-1); }
-  .insp-btn { font: inherit; font-size: 13px; font-weight: 600; color: #fff; background: var(--series-1); border: none; border-radius: 8px; padding: 8px 18px; cursor: pointer; }
+  .insp-card { border: 1.5px solid color-mix(in oklab, #12b06c 45%, var(--border)); background: linear-gradient(180deg, color-mix(in oklab, #12b06c 7%, var(--surface-1)), var(--surface-1) 55%); box-shadow: 0 2px 16px rgba(14,156,96,0.10); }
+  .insp-card h2 { font-size: 17px; display: flex; align-items: center; gap: 8px; }
+  .insp-card h2 .insp-ico { font-size: 19px; }
+  .insp-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+  .insp-row input { flex: 1; min-width: 260px; font: inherit; font-size: 14.5px; font-family: ui-monospace, monospace; color: var(--text-primary); background: var(--page); border: 1.5px solid color-mix(in oklab, #12b06c 30%, var(--border)); border-radius: 10px; padding: 13px 16px; outline: none; transition: border-color .15s, box-shadow .15s; }
+  .insp-row input:focus { border-color: #12b06c; box-shadow: 0 0 0 3px rgba(18,176,108,0.18); }
+  .insp-row input::placeholder { color: var(--text-muted); }
+  .insp-btn { font: inherit; font-size: 14.5px; font-weight: 650; color: #fff; background: linear-gradient(135deg, #0e9c60, #12b06c); border: none; border-radius: 10px; padding: 13px 28px; cursor: pointer; box-shadow: 0 1px 6px rgba(14,156,96,0.35); }
+  .insp-btn:hover { filter: brightness(1.08); }
   .insp-btn:disabled { opacity: 0.5; cursor: default; }
   .insp-status { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
   .insp-result { margin-top: 14px; border-top: 1px solid var(--grid); padding-top: 14px; display: none; }
@@ -206,8 +211,8 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2>Token inspector — check any pons token</h2>
+  <div class="card insp-card">
+    <h2><span class="insp-ico">🔍</span>Token inspector — check any pons token</h2>
     <div class="desc">Paste a token address: creator history, real holders, market state and graduation progress are read live from the chain and turned into a transparent safety score. <strong>Not an audit, not financial advice.</strong></div>
     <div class="insp-row">
       <input id="inspInput" type="text" placeholder="0x… token address" spellcheck="false" autocomplete="off">
