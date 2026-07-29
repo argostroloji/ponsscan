@@ -212,10 +212,10 @@
   </div>
 
   <div class="card insp-card">
-    <h2><span class="insp-ico">🔍</span>Token inspector — check any pons token</h2>
-    <div class="desc">Paste a token address: creator history, real holders, market state and graduation progress are read live from the chain and turned into a transparent safety score. <strong>Not an audit, not financial advice.</strong></div>
+    <h2><span class="insp-ico">🔍</span>Token inspector — check any pons token or creator wallet</h2>
+    <div class="desc">Paste a <strong>token address</strong> (creator history, real holders, market state, graduation progress → transparent safety score) or a <strong>creator wallet</strong> (their launches, graduation rate, serial-deployer check). All read live from the chain. <strong>Not an audit, not financial advice.</strong></div>
     <div class="insp-row">
-      <input id="inspInput" type="text" placeholder="0x… token address" spellcheck="false" autocomplete="off">
+      <input id="inspInput" type="text" placeholder="0x… token or creator address" spellcheck="false" autocomplete="off">
       <button class="insp-btn" id="inspBtn" type="button">Inspect</button>
     </div>
     <div class="insp-status" id="inspStatus"></div>
@@ -231,6 +231,7 @@
         <div class="gradbar"><div class="meter"><div class="fill" id="inspGradFill" style="width:0%"></div></div><span class="meter-val" id="inspGradVal">—</span></div>
       </div>
       <div class="insp-factors" id="inspFactors"></div>
+      <div id="inspCreatorList" style="display:none;margin-top:12px"></div>
       <div class="insp-links" id="inspLinks"></div>
     </div>
   </div>
@@ -844,6 +845,95 @@
     } catch (e) { return null; }
   }
 
+  async function findCreatorLaunches(addr) {
+    const dec = logs => (logs || []).map(l => ({
+      block: hexNum(l.blockNumber), token: topicAddr(l.topics[1]), pool: '0x' + l.data.slice(90, 130)
+    })).sort((a, b) => b.block - a.block);
+    const q = (from) => rpc('eth_getLogs', [{
+      fromBlock: '0x' + from.toString(16), toBlock: 'latest',
+      address: FACTORY, topics: [TOPIC_LAUNCH, null, pad32(addr)]
+    }], 90000);
+    let logs = await q(Math.max(FACTORY_START, chain.latestBlock - 1000000));
+    let full = false;
+    if (!logs || !logs.length) {
+      $('inspStatus').textContent = 'Not found as a token or recent creator — searching full creator history (~20s)…';
+      logs = await q(FACTORY_START);
+      full = true;
+    }
+    return { list: dec(logs), full };
+  }
+
+  async function renderCreatorView(addr, list, fullHistory) {
+    const count = list.length;
+    // graduation check for up to 60 newest pools
+    let gradSet = new Set();
+    const toCheck = list.slice(0, 60);
+    for (let i = 0; i < toCheck.length; i += 30) {
+      const batch = toCheck.slice(i, i + 30);
+      try {
+        const res = await rpcBatch(batch.map(l => balOf(WETH, l.pool)));
+        res.forEach((r, j) => { if (r && hexBig(r) >= GRAD_WEI) gradSet.add(batch[j].token); });
+      } catch (e) { /* partial ok */ }
+      if (i + 30 < toCheck.length) await sleep(350);
+    }
+    await fetchSymbols(list.slice(0, 10).map(l => l.token));
+    const v = count >= 5 ? { text: 'Serial deployer', icon: '✕', color: 'var(--status-critical)' }
+      : count >= 2 ? { text: 'Repeat creator', icon: '!', color: 'var(--status-warning)' }
+      : { text: 'Single launch', icon: '✓', color: 'var(--status-good)' };
+    $('inspName').textContent = 'Creator wallet';
+    $('inspAddr').textContent = addr;
+    $('inspAddr').appendChild(copyBtn(addr));
+    const vc = $('inspVerdict'); vc.replaceChildren();
+    const ic = document.createElement('span'); ic.textContent = v.icon; ic.style.color = v.color; ic.style.fontWeight = '700';
+    vc.append(ic, document.createTextNode(' ' + v.text));
+    const windowNote = fullHistory ? 'all history' : 'last ~28h';
+    const grid = $('inspGrid'); grid.replaceChildren();
+    grid.append(
+      inspCell('Launches (' + windowNote + ')', String(count)),
+      inspCell('Graduated (of newest ' + toCheck.length + ')', gradSet.size + ' 🎓'),
+      inspCell('Newest launch', count ? timeAgo(Math.max(1, Date.now() / 1000 - blockTime(list[0].block))) : '—', true),
+      inspCell('Oldest in window', count ? timeAgo(Math.max(1, Date.now() / 1000 - blockTime(list[count - 1].block))) : '—', true)
+    );
+    $('inspGradWrap').style.display = 'none';
+    const fx = $('inspFactors'); fx.replaceChildren();
+    const fstrong = document.createElement('strong'); fstrong.textContent = 'Creator signals: ';
+    fx.append(fstrong, document.createTextNode(
+      count + ' launch' + (count === 1 ? '' : 'es') + ' (' + windowNote + ') · ' +
+      (count >= 5 ? 'serial deployment is a strong negative signal in the token safety score' :
+       count >= 2 ? 'repeat activity — check each token individually' :
+       'no serial-deployment signal')));
+    const listEl = $('inspCreatorList'); listEl.replaceChildren();
+    listEl.style.display = 'block';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px';
+    title.textContent = 'Newest tokens by this wallet';
+    listEl.appendChild(title);
+    list.slice(0, 10).forEach(l => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--grid);font-size:12.5px';
+      const s = document.createElement('span'); s.className = 'feed-sym'; s.textContent = sym(l.token); s.title = l.token;
+      s.addEventListener('click', () => { $('inspInput').value = l.token; inspect(l.token); });
+      const age = document.createElement('span'); age.style.color = 'var(--text-muted)';
+      age.textContent = timeAgo(Math.max(1, Date.now() / 1000 - blockTime(l.block)));
+      row.append(s, copyBtn(l.token), age);
+      if (gradSet.has(l.token)) { const g = document.createElement('span'); g.textContent = '🎓'; g.title = 'graduated'; row.appendChild(g); }
+      listEl.appendChild(row);
+    });
+    if (list.length > 10) {
+      const more = document.createElement('div');
+      more.style.cssText = 'font-size:11px;color:var(--text-muted);margin-top:6px';
+      more.textContent = '+' + (list.length - 10) + ' more in this window';
+      listEl.appendChild(more);
+    }
+    const links = $('inspLinks'); links.replaceChildren();
+    const bs = document.createElement('a');
+    bs.href = 'https://robinhoodchain.blockscout.com/address/' + addr;
+    bs.target = '_blank'; bs.rel = 'noopener'; bs.textContent = 'Blockscout ↗';
+    links.appendChild(bs);
+    $('inspStatus').textContent = '';
+    $('inspResult').style.display = 'block';
+  }
+
   async function fetchHolders(addr, pool) {
     try {
       const data = await fetchJson('https://robinhoodchain.blockscout.com/api/v2/tokens/' + addr + '/holders');
@@ -886,6 +976,18 @@
         const own = dex.pairs.filter(p => (p.baseToken && p.baseToken.address || '').toLowerCase() === a);
         pair = own.reduce((best, p) => (!best || (p.liquidity && p.liquidity.usd || 0) > (best.liquidity && best.liquidity.usd || 0) ? p : best), null);
       }
+      // Not a token? Try the address as a creator wallet instead.
+      if (!launch && !pair && rpcLive) {
+        status.textContent = 'No token found at this address — checking creator activity…';
+        const { list, full } = await findCreatorLaunches(a);
+        if (list.length) {
+          await renderCreatorView(a, list, full);
+          $('inspBtn').disabled = false;
+          inspecting = false;
+          return;
+        }
+      }
+      $('inspCreatorList').style.display = 'none';
       // Metadata
       status.textContent = 'Reading on-chain state…';
       let name = pair && pair.baseToken.name, symbol = pair && pair.baseToken.symbol;
