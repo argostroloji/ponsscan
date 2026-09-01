@@ -1,6 +1,6 @@
 # <img src="logo.svg" height="36" alt=""> PonsScan
 
-Independent analytics & safety dashboard for the [pons](https://ponsfamily.com) launchpad on **Robinhood Chain** — a single self-contained HTML file that reads the chain directly from your browser. No backend, no API keys, no wallet connection.
+Independent analytics & safety dashboard for the [pons](https://ponsfamily.com) **V2** launchpad on **Robinhood Chain** — a single self-contained HTML file that reads the chain directly from your browser. No backend, no API keys, no wallet connection.
 
 **🔴 Live: [ponsscan.xyz](https://ponsscan.xyz)** · 🎓 [Graduation alerts on Telegram](https://t.me/ponsscan) · 𝕏 [@Argostroloji](https://x.com/Argostroloji)
 
@@ -8,38 +8,31 @@ Independent analytics & safety dashboard for the [pons](https://ponsfamily.com) 
 
 ## Features
 
-- **🔍 Token inspector (rug-check)** — paste any token address and get: creator + their serial-launch history, real (non-pool) holder count, market state, graduation progress and a transparent 0–100 safety score with every factor spelled out
-- **📊 Exact launch rate** — every `TokenLaunched` event from the last 24h counted straight from chain logs (no sampling, no extrapolation), bucketed per hour
-- **⚡ Live launch feed** — newest launches with age and creator; serial deployers get a red ×N badge; click any token to inspect it
-- **🎓 Graduation radar** — the newest launches ranked by WETH accumulated in their pool vs the 4.2 WETH graduation threshold, plus tokens that just graduated
-- **🔥 PONS burn tracker** — total PONS in the burn address (buyback & burn), % of supply, and how much was burned in the last 24h
-- **👥 Creator concentration** — distinct creators, top-deployer share and serial-wallet counts over the full 24h window
-- **💰 PONS token metrics** — price, volume, liquidity, FDV across pools
+- **🔍 Token Inspector (rug-check)** — paste any address *or search by name*: creator + their serial-launch history, real (non-pool) holder count, market state, graduation status and a transparent 0–100 safety score — plus an embedded live chart for graduated tokens. Works for **creator wallets** too (their launches, graduation rate, serial-deployer check). Deep-linkable via `?token=0x…`.
+- **🎓 Live Graduations board** — every token whose bonding curve just completed, with logo, price, 24h change, liquidity, volume and market cap; sortable by Newest / Top 24h / Liquidity; refreshed every 60s straight from the factory's graduation events.
+- **⭐ Watchlist** — star any token into a DexScreener-style sidebar (saved in your browser). Pre-graduation tokens show their live curve progress bar; optional browser notifications on graduation or ±50% moves.
+- **👤 Creator scorecards** — every graduated token carries its creator's 24h record (launches + graduations); serial deployers are flagged in red. One click opens the full creator profile.
+- **📊 Exact launch metrics** — every V2 `TokenLaunched` event from the last 24h counted from chain logs (no sampling), hourly rate chart, live launch feed with serial-deployer badges.
+- **🎯 Graduation radar** — the newest ETH-quoted launches ranked by ETH accumulated on their bonding curve vs their own graduation threshold, with 🔥 buy-velocity badges.
+- **📈 Ecosystem health strip** — graduation rate, median time-to-graduation and total ETH collected by graduating curves over 24h. Data published nowhere else.
+- **🔥 PONS burn tracker** — live total burned by the buyback-and-burn engine, including the last 24h.
 
 ## How it works
 
-Everything runs client-side:
+Everything runs client-side against public endpoints:
 
-- **Robinhood Chain RPC** (`rpc.mainnet.chain.robinhood.com`) — `TokenLaunched` logs, WETH pool balances, burn-address balance, token metadata via `eth_call` (CORS-open, batched, rate-limit-aware with backoff)
-- **DexScreener API** — prices, volumes, liquidity
+- **Robinhood Chain RPC** — `TokenLaunched` + graduation event logs, curve balances, burn address, token metadata (rate-limit-aware: global request queue, batching, backoff)
+- **DexScreener API** — prices, volumes, liquidity, logos, name search *(market data is only trusted for pools with real liquidity — curve-phase "pools" carry phantom prices and are shown as curve progress instead)*
 - **Blockscout API** — token holder lists
-- Contract addresses & event signatures from [docs.ponsfamily.com](https://docs.ponsfamily.com)
-
-The launch feed refreshes every 60s, market/burn/radar data every 5 minutes, and the full 24h scan every 30 minutes. If the RPC is unreachable, the page falls back to a baked-in snapshot (the pill in the header shows which mode is active).
 
 ## Safety score
 
-Rule-based and fully transparent: base 50 · single-launch creator +20, repeat −5, serial (≥5 in window) −25 · actively traded +10, quiet +5, not indexed −10 · ≥3 real holders +15, 1–2 +5, zero holders despite >$1K volume −30 (wash-trading signal) · graduated +10. Clamped to 5–95.
+Rule-based and fully transparent: base 50 · single-launch creator +20, repeat −5, serial (≥5 in window) −25 · actively traded +10, quiet +5, no live pool yet −10 · ≥3 real holders +15, 1–2 +5, zero holders despite >$1K volume −30 (wash-trading signal) · graduated +10. Clamped to 5–95. A **heuristic screen, not a contract audit**.
 
-It is a **heuristic screen, not a contract audit**, and nothing here is financial advice.
+## PonsScanBot
 
-## Roadmap (v1)
-
-- Full event indexer (all launches since factory deploy, both factories)
-- Public REST API + WebSocket stream
-- Full per-creator history (beyond the ~28h log window) and calibrated scoring
-- Graduation alerts
+The companion Telegram bot ([t.me/ponsscan](https://t.me/ponsscan)) watches the V2 factory's graduation events 24/7 and announces every graduation the moment it happens on-chain — with time-to-graduation, serial-creator warnings and a one-tap PonsScan rug-check link.
 
 ## Disclaimer
 
-Independent community project — not affiliated with pons or Robinhood. The safety score is a heuristic screen, **not** a contract audit. Nothing here is financial advice.
+Independent community project — not affiliated with pons or Robinhood. Graduation ≠ safe. Nothing here is financial advice.

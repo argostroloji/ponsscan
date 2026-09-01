@@ -514,7 +514,21 @@
     throw lastErr;
   }
   let rpcId = 1;
+  // Global limiter: the public RPC rate-limits bursts (and its 429s carry a broken
+  // CORS header the browser can't even read), so serialize requests ~200ms apart.
+  let rpcQueue = Promise.resolve();
+  let rpcLast = 0;
+  function rpcSlot() {
+    const turn = rpcQueue.then(async () => {
+      const wait = 200 - (Date.now() - rpcLast);
+      if (wait > 0) await sleep(wait);
+      rpcLast = Date.now();
+    });
+    rpcQueue = turn.catch(() => { /* keep queue alive */ });
+    return turn;
+  }
   async function rpc(method, params, timeoutMs) {
+    await rpcSlot();
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), timeoutMs || 30000);
     try {
@@ -531,6 +545,7 @@
   }
   async function rpcBatch(calls, timeoutMs) {
     if (!calls.length) return [];
+    await rpcSlot();
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), timeoutMs || 45000);
     try {
@@ -787,8 +802,8 @@
       const batch = need.slice(i, i + 40);
       try {
         const res = await retry(() => rpcBatch(batch.map(a => ethCall(a, '0x95d89b41'))), 2, 800);
-        res.forEach((r, j) => symbolCache.set(batch[j], decodeAbiString(r) || shortAddr(batch[j])));
-      } catch (e) { batch.forEach(a => { if (!symbolCache.has(a)) symbolCache.set(a, shortAddr(a)); }); }
+        res.forEach((r, j) => { const s = decodeAbiString(r); if (s) symbolCache.set(batch[j], s); });
+      } catch (e) { /* leave uncached so a later pass can retry; sym() falls back to shortAddr */ }
       if (i + 40 < need.length) await sleep(300);
     }
   }
