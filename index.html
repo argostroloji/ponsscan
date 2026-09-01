@@ -194,7 +194,15 @@
   .tok-nm .n { font-size: 10.5px; color: var(--text-muted); max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pc-up { color: var(--delta-good); font-weight: 650; }
   .pc-down { color: var(--status-critical); font-weight: 650; }
-  #gradTable td { padding: 7px 10px; }
+  #gradTable td, #watchTable td { padding: 7px 10px; }
+  .seg { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+  .mini-btn.seg-on { color: #fff; background: linear-gradient(135deg, #0e9c60, #12b06c); border-color: transparent; }
+  .starbtn { cursor: pointer; border: none; background: none; font-size: 15px; line-height: 1; color: var(--text-muted); padding: 2px 4px; }
+  .starbtn.on { color: #f0a70a; }
+  .starbtn:hover { color: #f0a70a; }
+  .cr-badge { font-size: 10.5px; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
+  .cr-badge:hover { color: var(--series-1); }
+  .cr-badge.warn { color: var(--status-critical); font-weight: 650; }
 </style>
 </head>
 <body>
@@ -263,12 +271,29 @@
   </div>
 
   <div class="card">
-    <div class="card-head"><h2>🎓 Live graduations <span class="scan-status" id="gradCount"></span></h2><button class="mini-btn" id="gradRefreshBtn" type="button">↻ Refresh</button></div>
-    <div class="desc">Tokens whose bonding curve just completed — the pool is live and trading. Newest first, refreshed every 60s. Click a token to rug-check it. <strong>Graduation ≠ safe.</strong></div>
+    <div class="card-head"><h2>🎓 Live graduations <span class="scan-status" id="gradCount"></span></h2>
+      <div class="seg">
+        <button class="mini-btn seg-on" id="sortNew" type="button">Newest</button>
+        <button class="mini-btn" id="sortGain" type="button">Top 24h</button>
+        <button class="mini-btn" id="sortLiq" type="button">Liquidity</button>
+        <button class="mini-btn" id="gradRefreshBtn" type="button">↻</button>
+      </div>
+    </div>
+    <div class="desc">Tokens whose bonding curve just completed — the pool is live and trading. Refreshed every 60s. ★ adds to your watchlist, 👤 opens the creator's record, clicking a token rug-checks it. <strong>Graduation ≠ safe.</strong> · <a href="https://t.me/ponsscan" target="_blank" rel="noopener">🔔 Get these as instant Telegram alerts</a></div>
     <div class="tscroll">
     <table id="gradTable">
       <thead><tr><th>Token</th><th>Graduated</th><th>Price</th><th>24h</th><th>Liquidity</th><th>Vol 24h</th><th></th></tr></thead>
       <tbody><tr><td colspan="7" style="color:var(--text-muted)">Loading graduations…</td></tr></tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="card" id="watchCard" style="display:none">
+    <div class="card-head"><h2>⭐ Watchlist</h2><span class="scan-status">saved in your browser · refreshed live</span></div>
+    <div class="tscroll">
+    <table id="watchTable">
+      <thead><tr><th>Token</th><th>Graduated</th><th>Price</th><th>24h</th><th>Liquidity</th><th>Vol 24h</th><th></th></tr></thead>
+      <tbody></tbody>
     </table>
     </div>
   </div>
@@ -769,6 +794,7 @@
       setPill(true, 'Live · block ' + chain.latestBlock.toLocaleString('en-US'));
       await renderFeed();
       await refreshGradFeed();
+      await renderWatchTable();
     } catch (e) { /* transient */ }
   }
 
@@ -840,85 +866,173 @@
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
   }
 
+  /* ---- watchlist (localStorage, per-browser) ---- */
+  function loadWatch() {
+    try { return (JSON.parse(localStorage.getItem('ponsscan_watch') || '[]') || []).filter(isAddr).map(a => a.toLowerCase()); }
+    catch (e) { return []; }
+  }
+  let watchlist = loadWatch();
+  function saveWatch() { try { localStorage.setItem('ponsscan_watch', JSON.stringify(watchlist)); } catch (e) { /* private mode */ } }
+  function toggleWatch(addr) {
+    addr = addr.toLowerCase();
+    const i = watchlist.indexOf(addr);
+    if (i >= 0) watchlist.splice(i, 1); else watchlist.unshift(addr);
+    saveWatch();
+    renderWatchTable();
+    renderGradTable();
+  }
+  function starBtn(addr) {
+    const on = watchlist.includes(addr.toLowerCase());
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'starbtn' + (on ? ' on' : ''); b.textContent = on ? '★' : '☆';
+    b.title = on ? 'Remove from watchlist' : 'Add to watchlist';
+    b.addEventListener('click', e => { e.stopPropagation(); toggleWatch(addr); });
+    return b;
+  }
+
+  /* ---- shared market row (graduations + watchlist) ---- */
+  function buildMarketRow(token, block, p, creatorStats) {
+    const symText = p ? p.baseToken.symbol : sym(token);
+    const nameText = p && p.baseToken.name && p.baseToken.name !== symText ? p.baseToken.name : '';
+    const tr = document.createElement('tr');
+    const tdT = document.createElement('td');
+    const cell = document.createElement('div'); cell.className = 'tok-cell';
+    const img = document.createElement('img'); img.className = 'tok-logo'; img.loading = 'lazy'; img.alt = '';
+    const fallback = avatarFor(token, symText);
+    img.src = (p && p.info && p.info.imageUrl) ? p.info.imageUrl : fallback;
+    img.addEventListener('error', () => { img.src = fallback; }, { once: true });
+    const nm = document.createElement('div'); nm.className = 'tok-nm';
+    const s = document.createElement('div'); s.className = 's feed-sym'; s.textContent = symText; s.title = token;
+    s.addEventListener('click', () => { $('inspInput').value = token; inspect(token); });
+    nm.appendChild(s);
+    if (nameText) { const n = document.createElement('div'); n.className = 'n'; n.textContent = nameText; nm.appendChild(n); }
+    if (creatorStats) {
+      const cb = document.createElement('div'); cb.className = 'cr-badge' + (creatorStats.n >= 5 ? ' warn' : '');
+      cb.textContent = '👤 ' + creatorStats.n + (creatorStats.n >= 5 ? '⚠️' : '') + ' launch' + (creatorStats.n === 1 ? '' : 'es') + ' · ' + creatorStats.g + '🎓';
+      cb.title = 'Creator ' + shortAddr(creatorStats.creator) + ': ' + creatorStats.n + ' launches, ' + creatorStats.g + ' graduated in the last 24h — click for full record';
+      cb.addEventListener('click', () => { $('inspInput').value = creatorStats.creator; inspect(creatorStats.creator); });
+      nm.appendChild(cb);
+    }
+    cell.append(img, nm, copyBtn(token), starBtn(token));
+    tdT.appendChild(cell); tr.appendChild(tdT);
+    const tdA = document.createElement('td');
+    tdA.textContent = block ? timeAgo(Math.max(1, Date.now() / 1000 - blockTime(block))) : '—';
+    tdA.style.color = 'var(--text-secondary)';
+    tr.appendChild(tdA);
+    const tdP = document.createElement('td');
+    tdP.textContent = p && p.priceUsd ? '$' + parseFloat(p.priceUsd).toPrecision(3) : 'indexing…';
+    tr.appendChild(tdP);
+    const tdC = document.createElement('td');
+    const ch = p && p.priceChange && p.priceChange.h24;
+    if (ch != null) {
+      const sp = document.createElement('span');
+      sp.className = ch >= 0 ? 'pc-up' : 'pc-down';
+      sp.textContent = (ch >= 0 ? '+' : '') + Math.round(ch) + '%';
+      tdC.appendChild(sp);
+    } else tdC.textContent = '—';
+    tr.appendChild(tdC);
+    const tdL = document.createElement('td'); tdL.textContent = p ? fmtUsd(p.liquidity && p.liquidity.usd) : '—'; tr.appendChild(tdL);
+    const tdV = document.createElement('td'); tdV.textContent = p ? fmtUsd(p.volume && p.volume.h24) : '—'; tr.appendChild(tdV);
+    const tdK = document.createElement('td');
+    if (p) {
+      const a = document.createElement('a');
+      a.href = 'https://dexscreener.com/robinhoodchain/' + (p.pairAddress || token);
+      a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'chart ↗';
+      tdK.appendChild(a);
+    }
+    tr.appendChild(tdK);
+    return tr;
+  }
+
+  async function enrichMeta(tokens) {
+    // one DexScreener call per 30 tokens; updates gradMeta cache
+    for (let i = 0; i < tokens.length; i += 30) {
+      const batch = tokens.slice(i, i + 30);
+      try {
+        const data = await fetchJson('https://api.dexscreener.com/latest/dex/tokens/' + batch.join(','));
+        const byTok = {};
+        (data.pairs || []).forEach(p => {
+          const a = (p.baseToken && p.baseToken.address || '').toLowerCase();
+          if (!byTok[a] || (p.liquidity && p.liquidity.usd || 0) > (byTok[a].liquidity && byTok[a].liquidity.usd || 0)) byTok[a] = p;
+        });
+        batch.forEach(t => { if (byTok[t]) gradMeta.set(t, byTok[t]); });
+      } catch (e) { /* keep cached */ }
+    }
+  }
+
+  function creatorStatsFor(token) {
+    const l = launches.find(x => x.token === token);
+    if (!l) return null;
+    const gradSet = new Set(gradList.map(g => g.token));
+    let n = 0, g = 0;
+    for (const x of launches) if (x.creator === l.creator) { n++; if (gradSet.has(x.token)) g++; }
+    return { creator: l.creator, n, g };
+  }
+
+  let gradSort = 'new';
+  try { gradSort = localStorage.getItem('ponsscan_sort') || 'new'; } catch (e) { /* default */ }
+  function setSort(s) {
+    gradSort = s;
+    try { localStorage.setItem('ponsscan_sort', s); } catch (e) { /* ok */ }
+    $('sortNew').classList.toggle('seg-on', s === 'new');
+    $('sortGain').classList.toggle('seg-on', s === 'gain');
+    $('sortLiq').classList.toggle('seg-on', s === 'liq');
+    renderGradTable();
+  }
+
   let renderingGrads = false;
   async function renderGradTable() {
     if (renderingGrads) return;
     renderingGrads = true;
     try {
       const tbody = document.querySelector('#gradTable tbody');
-      const items = gradList.slice(0, 15);
-      if (!items.length) {
+      const pool = gradList.slice(0, 30);
+      if (!pool.length) {
         tbody.replaceChildren();
         const tr = document.createElement('tr'); const td = document.createElement('td');
         td.colSpan = 7; td.style.color = 'var(--text-muted)'; td.textContent = 'No graduations in this window yet.';
         tr.appendChild(td); tbody.appendChild(tr);
         return;
       }
-      // one DexScreener call refreshes market data for all visible rows
-      try {
-        const data = await fetchJson('https://api.dexscreener.com/latest/dex/tokens/' + items.map(g => g.token).join(','));
-        const byTok = {};
-        (data.pairs || []).forEach(p => {
-          const a = (p.baseToken && p.baseToken.address || '').toLowerCase();
-          if (!byTok[a] || (p.liquidity && p.liquidity.usd || 0) > (byTok[a].liquidity && byTok[a].liquidity.usd || 0)) byTok[a] = p;
+      await enrichMeta(pool.map(g => g.token));
+      await fetchSymbols(pool.filter(g => !gradMeta.get(g.token)).map(g => g.token));
+      let items = pool.slice();
+      if (gradSort === 'gain') {
+        items.sort((a, b) => {
+          const pa = gradMeta.get(a.token), pb = gradMeta.get(b.token);
+          return ((pb && pb.priceChange && pb.priceChange.h24) ?? -1e9) - ((pa && pa.priceChange && pa.priceChange.h24) ?? -1e9);
         });
-        items.forEach(g => { if (byTok[g.token]) gradMeta.set(g.token, byTok[g.token]); });
-      } catch (e) { /* keep cached */ }
-      await fetchSymbols(items.filter(g => !gradMeta.get(g.token)).map(g => g.token));
+      } else if (gradSort === 'liq') {
+        items.sort((a, b) => {
+          const pa = gradMeta.get(a.token), pb = gradMeta.get(b.token);
+          return ((pb && pb.liquidity && pb.liquidity.usd) || 0) - ((pa && pa.liquidity && pa.liquidity.usd) || 0);
+        });
+      }
       tbody.replaceChildren();
-      items.forEach(g => {
-        const p = gradMeta.get(g.token);
-        const symText = p ? p.baseToken.symbol : sym(g.token);
-        const nameText = p && p.baseToken.name && p.baseToken.name !== symText ? p.baseToken.name : '';
-        const tr = document.createElement('tr');
-        // token cell
-        const tdT = document.createElement('td');
-        const cell = document.createElement('div'); cell.className = 'tok-cell';
-        const img = document.createElement('img'); img.className = 'tok-logo'; img.loading = 'lazy'; img.alt = '';
-        const fallback = avatarFor(g.token, symText);
-        img.src = (p && p.info && p.info.imageUrl) ? p.info.imageUrl : fallback;
-        img.addEventListener('error', () => { img.src = fallback; }, { once: true });
-        const nm = document.createElement('div'); nm.className = 'tok-nm';
-        const s = document.createElement('div'); s.className = 's feed-sym'; s.textContent = symText; s.title = g.token;
-        s.addEventListener('click', () => { $('inspInput').value = g.token; inspect(g.token); });
-        nm.appendChild(s);
-        if (nameText) { const n = document.createElement('div'); n.className = 'n'; n.textContent = nameText; nm.appendChild(n); }
-        cell.append(img, nm, copyBtn(g.token));
-        tdT.appendChild(cell); tr.appendChild(tdT);
-        // age
-        const tdA = document.createElement('td');
-        tdA.textContent = timeAgo(Math.max(1, Date.now() / 1000 - blockTime(g.block)));
-        tdA.style.color = 'var(--text-secondary)';
-        tr.appendChild(tdA);
-        // price
-        const tdP = document.createElement('td');
-        tdP.textContent = p && p.priceUsd ? '$' + parseFloat(p.priceUsd).toPrecision(3) : 'indexing…';
-        tr.appendChild(tdP);
-        // 24h change
-        const tdC = document.createElement('td');
-        const ch = p && p.priceChange && p.priceChange.h24;
-        if (ch != null) {
-          const sp = document.createElement('span');
-          sp.className = ch >= 0 ? 'pc-up' : 'pc-down';
-          sp.textContent = (ch >= 0 ? '+' : '') + Math.round(ch) + '%';
-          tdC.appendChild(sp);
-        } else tdC.textContent = '—';
-        tr.appendChild(tdC);
-        // liq, vol
-        const tdL = document.createElement('td'); tdL.textContent = p ? fmtUsd(p.liquidity && p.liquidity.usd) : '—'; tr.appendChild(tdL);
-        const tdV = document.createElement('td'); tdV.textContent = p ? fmtUsd(p.volume && p.volume.h24) : '—'; tr.appendChild(tdV);
-        // link
-        const tdK = document.createElement('td');
-        if (p) {
-          const a = document.createElement('a');
-          a.href = 'https://dexscreener.com/robinhoodchain/' + (p.pairAddress || g.token);
-          a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'chart ↗';
-          tdK.appendChild(a);
-        }
-        tr.appendChild(tdK);
-        tbody.appendChild(tr);
+      items.slice(0, 15).forEach(g => {
+        tbody.appendChild(buildMarketRow(g.token, g.block, gradMeta.get(g.token), creatorStatsFor(g.token)));
       });
     } finally { renderingGrads = false; }
+  }
+
+  let renderingWatch = false;
+  async function renderWatchTable() {
+    if (renderingWatch) return;
+    renderingWatch = true;
+    try {
+      const card = $('watchCard');
+      if (!watchlist.length) { card.style.display = 'none'; return; }
+      card.style.display = 'block';
+      const items = watchlist.slice(0, 30);
+      await enrichMeta(items);
+      await fetchSymbols(items.filter(t => !gradMeta.get(t)));
+      const tbody = document.querySelector('#watchTable tbody');
+      tbody.replaceChildren();
+      items.forEach(t => {
+        const g = gradList.find(x => x.token === t);
+        tbody.appendChild(buildMarketRow(t, g ? g.block : null, gradMeta.get(t), creatorStatsFor(t)));
+      });
+    } finally { renderingWatch = false; }
   }
 
   async function gradRadar() {
@@ -1220,6 +1334,7 @@
       $('inspName').textContent = (symbol ? symbol : shortAddr(a)) + (name && name !== symbol ? ' — ' + name : '');
       $('inspAddr').textContent = a;
       $('inspAddr').appendChild(copyBtn(a));
+      $('inspAddr').appendChild(starBtn(a));
       const vc = $('inspVerdict'); vc.replaceChildren();
       const ic = document.createElement('span'); ic.textContent = v.icon; ic.style.color = v.color; ic.style.fontWeight = '700';
       vc.append(ic, document.createTextNode(' ' + v.text + ' · score ' + score));
@@ -1525,8 +1640,13 @@
   $('gradRefreshBtn').addEventListener('click', async () => {
     const b = $('gradRefreshBtn');
     b.disabled = true; b.textContent = '…';
-    try { await refreshFeedData(); } finally { b.textContent = '↻ Refresh'; b.disabled = false; }
+    try { await refreshFeedData(); } finally { b.textContent = '↻'; b.disabled = false; }
   });
+  $('sortNew').addEventListener('click', () => setSort('new'));
+  $('sortGain').addEventListener('click', () => setSort('gain'));
+  $('sortLiq').addEventListener('click', () => setSort('liq'));
+  setSort(gradSort);
+  renderWatchTable();
   init();
 })();
 </script>
