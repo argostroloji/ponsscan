@@ -282,8 +282,8 @@
     <div class="desc">Tokens whose bonding curve just completed — the pool is live and trading. Refreshed every 60s. ★ adds to your watchlist, 👤 opens the creator's record, clicking a token rug-checks it. <strong>Graduation ≠ safe.</strong> · <a href="https://t.me/ponsscan" target="_blank" rel="noopener">🔔 Get these as instant Telegram alerts</a></div>
     <div class="tscroll">
     <table id="gradTable">
-      <thead><tr><th>Token</th><th>Graduated</th><th>Price</th><th>24h</th><th>Liquidity</th><th>Vol 24h</th><th></th></tr></thead>
-      <tbody><tr><td colspan="7" style="color:var(--text-muted)">Loading graduations…</td></tr></tbody>
+      <thead><tr><th>Token</th><th>Graduated</th><th>Price</th><th>24h</th><th>Liquidity</th><th>Vol 24h</th><th>MCap</th><th></th></tr></thead>
+      <tbody><tr><td colspan="8" style="color:var(--text-muted)">Loading graduations…</td></tr></tbody>
     </table>
     </div>
   </div>
@@ -292,7 +292,7 @@
     <div class="card-head"><h2>⭐ Watchlist</h2><span class="scan-status">saved in your browser · refreshed live</span></div>
     <div class="tscroll">
     <table id="watchTable">
-      <thead><tr><th>Token</th><th>Graduated</th><th>Price</th><th>24h</th><th>Liquidity</th><th>Vol 24h</th><th></th></tr></thead>
+      <thead><tr><th>Token</th><th>Graduated</th><th>Price</th><th>24h</th><th>Liquidity</th><th>Vol 24h</th><th>MCap</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
     </div>
@@ -845,7 +845,9 @@
 
   // cheap incremental check, piggybacks on the 60s feed cycle
   async function refreshGradFeed() {
-    if (!rpcLive || !gradFeedCursor || chain.latestBlock < gradFeedCursor) return;
+    if (!rpcLive) return;
+    if (!gradFeedCursor) { await refreshGrads24h(); return; } // first load failed earlier — retry full window
+    if (chain.latestBlock < gradFeedCursor) return;
     try {
       const logs = await getGradLogs(gradFeedCursor, chain.latestBlock);
       gradFeedCursor = chain.latestBlock + 1;
@@ -933,6 +935,9 @@
     tr.appendChild(tdC);
     const tdL = document.createElement('td'); tdL.textContent = p ? fmtUsd(p.liquidity && p.liquidity.usd) : '—'; tr.appendChild(tdL);
     const tdV = document.createElement('td'); tdV.textContent = p ? fmtUsd(p.volume && p.volume.h24) : '—'; tr.appendChild(tdV);
+    const tdM = document.createElement('td');
+    tdM.textContent = p ? fmtUsd(p.marketCap != null ? p.marketCap : p.fdv) : '—';
+    tr.appendChild(tdM);
     const tdK = document.createElement('td');
     if (p) {
       const a = document.createElement('a');
@@ -990,7 +995,7 @@
       if (!pool.length) {
         tbody.replaceChildren();
         const tr = document.createElement('tr'); const td = document.createElement('td');
-        td.colSpan = 7; td.style.color = 'var(--text-muted)'; td.textContent = 'No graduations in this window yet.';
+        td.colSpan = 8; td.style.color = 'var(--text-muted)'; td.textContent = 'No graduations in this window yet.';
         tr.appendChild(td); tbody.appendChild(tr);
         return;
       }
