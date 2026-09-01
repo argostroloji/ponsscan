@@ -225,12 +225,28 @@
     .viz-root { padding-left: 270px; }
     #watchCard { display: none !important; }
   }
+
+  /* Search results, chart, eco strip, heat, curve bars */
+  #searchResults { margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); overflow: hidden; }
+  .sr-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--grid); font-size: 12.5px; }
+  .sr-row:last-child { border-bottom: none; }
+  .sr-row:hover { background: color-mix(in oklab, var(--series-1) 8%, transparent); }
+  .sr-row img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex: none; background: var(--grid); }
+  .sr-sym { font-weight: 650; }
+  .sr-name { color: var(--text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+  .sr-mc { margin-left: auto; color: var(--text-secondary); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #inspChart iframe { width: 100%; height: 420px; border: 0; border-radius: 10px; background: var(--page); }
+  .eco-strip { font-size: 12px; color: var(--text-secondary); background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 8px 14px; margin-bottom: 12px; display: flex; gap: 18px; flex-wrap: wrap; }
+  .eco-strip b { color: var(--text-primary); }
+  .heat { font-size: 10.5px; font-weight: 650; color: #e8590c; white-space: nowrap; }
+  .wp-bar { height: 4px; border-radius: 2px; background: color-mix(in oklab, var(--series-1) 18%, transparent); margin-top: 3px; overflow: hidden; }
+  .wp-bar .f { height: 100%; background: var(--series-1); border-radius: 2px; }
 </style>
 </head>
 <body>
 <div class="viz-root" id="root">
 <aside class="watch-panel" id="watchPanel">
-  <h3>⭐ Watchlist <span class="cnt" id="wpCount"></span></h3>
+  <h3>⭐ Watchlist <span class="cnt" id="wpCount"></span><button class="wp-x" id="wpNotif" type="button" style="margin-left:auto" title="Browser alerts for watched tokens (graduation / ±50% moves)">🔕</button></h3>
   <div id="wpList"><div class="wp-empty">Star ☆ any token on the graduations board (or in the inspector) to track it here — saved in your browser, prices refresh live.</div></div>
 </aside>
 <div class="wrap">
@@ -270,14 +286,16 @@
       <div class="note" id="kpiBurnNote">80% of protocol fees → TWAP buyback → burn</div>
     </div>
   </div>
+  <div class="eco-strip" id="ecoStrip" style="display:none"></div>
 
   <div class="card insp-card">
     <h2><span class="insp-ico">🔍</span>Token inspector — check any pons token or creator wallet</h2>
     <div class="desc">Paste a <strong>token address</strong> (creator history, real holders, market state, graduation progress → transparent safety score) or a <strong>creator wallet</strong> (their launches, graduation rate, serial-deployer check). All read live from the chain. <strong>Not an audit, not financial advice.</strong></div>
     <div class="insp-row">
-      <input id="inspInput" type="text" placeholder="0x… token or creator address" spellcheck="false" autocomplete="off">
+      <input id="inspInput" type="text" placeholder="0x… address — or search by name (e.g. pickles)" spellcheck="false" autocomplete="off">
       <button class="insp-btn" id="inspBtn" type="button">Inspect</button>
     </div>
+    <div id="searchResults" style="display:none"></div>
     <div class="insp-status" id="inspStatus"></div>
     <div class="insp-result" id="inspResult">
       <div class="insp-head">
@@ -293,6 +311,7 @@
       <div class="insp-factors" id="inspFactors"></div>
       <div id="inspCreatorList" style="display:none;margin-top:12px"></div>
       <div class="insp-links" id="inspLinks"></div>
+      <div id="inspChart" style="display:none;margin-top:14px"></div>
     </div>
   </div>
 
@@ -608,7 +627,7 @@
     if (t.indexed) {
       if ((t.vol || 0) > 1000) { s += 10; factors.push('actively traded +10'); }
       else { s += 5; factors.push('quiet market +5'); }
-    } else { s -= 10; factors.push('not indexed −10'); }
+    } else { s -= 10; factors.push('no live pool yet −10'); }
     if (t.holders == null) factors.push('holders unknown ±0');
     else if (t.holders >= 3) { s += 15; factors.push(t.holders + ' real holders +15'); }
     else if (t.holders >= 1) { s += 5; factors.push(t.holders + ' real holders +5'); }
@@ -697,6 +716,7 @@
       $('kpiLaunches').textContent = launches.length.toLocaleString('en-US');
       $('kpiLaunchesNote').textContent = 'Exact on-chain count · pons V2 factory · live';
       refreshGrads24h();
+      renderEcoStrip();
     } catch (e) {
       status.textContent = '· partial scan (last ' + Math.round((chain.latestBlock - scannedFromBlock) / HOUR_BLOCKS) + 'h shown) — retries in 30 min';
       if (launches.length) {
@@ -865,8 +885,38 @@
       gradList = logs.reverse().filter(g => !seen.has(g.token) && seen.add(g.token));
       gradFeedCursor = chain.latestBlock + 1;
       $('gradCount').textContent = '· ' + gradList.length + ' in the last 24h';
+      renderEcoStrip();
       await renderGradTable();
     } catch (e) { /* next cycle */ }
+  }
+
+  function renderEcoStrip() {
+    if (!gradList.length || !launches.length) return;
+    const el = $('ecoStrip');
+    const byTok = new Map(launches.map(l => [l.token, l]));
+    const durs = []; let eth = 0n;
+    gradList.forEach(g => {
+      const l = byTok.get(g.token);
+      if (l) { durs.push((g.block - l.block) / chain.bps); if (l.pair === ZERO) eth += l.thr; }
+    });
+    durs.sort((a, b) => a - b);
+    const med = durs.length ? durs[Math.floor(durs.length / 2)] : null;
+    const rate = gradList.length / launches.length * 100;
+    const fmtDur = s => s >= 5400 ? (s / 3600).toFixed(1) + 'h' : Math.round(s / 60) + 'm';
+    el.replaceChildren();
+    const parts = [
+      ['🎓 Graduation rate (24h): ', rate.toFixed(1) + '%', ' of ' + launches.length.toLocaleString('en-US') + ' launches'],
+      ['⏱ Median time-to-graduation: ', med != null ? fmtDur(med) : '—', ''],
+      ['⛽ Collected by graduating curves: ', '≥' + fmtWeth(eth).replace(/\.?0+$/, '') + ' ETH', ' (24h)']
+    ];
+    parts.forEach(([a, bTxt, c]) => {
+      const sp = document.createElement('span');
+      sp.appendChild(document.createTextNode(a));
+      const b = document.createElement('b'); b.textContent = bTxt; sp.appendChild(b);
+      if (c) sp.appendChild(document.createTextNode(c));
+      el.appendChild(sp);
+    });
+    el.style.display = 'flex';
   }
 
   // cheap incremental check, piggybacks on the 60s feed cycle
@@ -919,15 +969,26 @@
   }
 
   /* ---- shared market row (graduations + watchlist) ---- */
-  function buildMarketRow(token, block, p, creatorStats) {
-    const symText = p ? p.baseToken.symbol : sym(token);
-    const nameText = p && p.baseToken.name && p.baseToken.name !== symText ? p.baseToken.name : '';
+  // DexScreener indexes V2 bonding-curve (hook) pools too, but derives nonsense
+  // prices/mcaps from their phantom liquidity — only trust pairs with real liquidity.
+  const reliablePair = p => !!(p && p.liquidity && p.liquidity.usd > 1000);
+
+  function shareHref(token, symText, p) {
+    const mc = p ? (p.marketCap != null ? p.marketCap : p.fdv) : null;
+    const txt = '$' + (symText || '?') + ' on pons' + (mc != null ? ' — MC ' + fmtUsd(mc) : '') + ' · rug-check:';
+    return 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(txt) + '&url=' + encodeURIComponent('https://ponsscan.xyz/?token=' + token);
+  }
+
+  function buildMarketRow(token, block, pRaw, creatorStats, curve) {
+    const symText = pRaw ? pRaw.baseToken.symbol : sym(token);
+    const nameText = pRaw && pRaw.baseToken.name && pRaw.baseToken.name !== symText ? pRaw.baseToken.name : '';
+    const p = reliablePair(pRaw) ? pRaw : null; // market numbers only from real pools
     const tr = document.createElement('tr');
     const tdT = document.createElement('td');
     const cell = document.createElement('div'); cell.className = 'tok-cell';
     const img = document.createElement('img'); img.className = 'tok-logo'; img.loading = 'lazy'; img.alt = '';
     const fallback = avatarFor(token, symText);
-    img.src = (p && p.info && p.info.imageUrl) ? p.info.imageUrl : fallback;
+    img.src = (pRaw && pRaw.info && pRaw.info.imageUrl) ? pRaw.info.imageUrl : fallback;
     img.addEventListener('error', () => { img.src = fallback; }, { once: true });
     const nm = document.createElement('div'); nm.className = 'tok-nm';
     const s = document.createElement('div'); s.className = 's feed-sym'; s.textContent = symText; s.title = token;
@@ -948,7 +1009,9 @@
     tdA.style.color = 'var(--text-secondary)';
     tr.appendChild(tdA);
     const tdP = document.createElement('td');
-    tdP.textContent = p && p.priceUsd ? '$' + parseFloat(p.priceUsd).toPrecision(3) : 'indexing…';
+    if (p && p.priceUsd) tdP.textContent = '$' + parseFloat(p.priceUsd).toPrecision(3);
+    else if (curve) tdP.textContent = fmtWeth(curve.bal) + ' / ' + fmtWeth(curve.thr).replace(/\.?0+$/, '') + ' ETH';
+    else tdP.textContent = 'indexing…';
     tr.appendChild(tdP);
     const tdC = document.createElement('td');
     const ch = p && p.priceChange && p.priceChange.h24;
@@ -957,6 +1020,10 @@
       sp.className = ch >= 0 ? 'pc-up' : 'pc-down';
       sp.textContent = (ch >= 0 ? '+' : '') + Math.round(ch) + '%';
       tdC.appendChild(sp);
+    } else if (curve) {
+      const pct = Math.min(100, Number(curve.bal * 1000n / curve.thr) / 10);
+      tdC.textContent = 'curve ' + pct.toFixed(0) + '%';
+      tdC.style.color = 'var(--series-1)';
     } else tdC.textContent = '—';
     tr.appendChild(tdC);
     const tdL = document.createElement('td'); tdL.textContent = p ? fmtUsd(p.liquidity && p.liquidity.usd) : '—'; tr.appendChild(tdL);
@@ -965,12 +1032,19 @@
     tdM.textContent = p ? fmtUsd(p.marketCap != null ? p.marketCap : p.fdv) : '—';
     tr.appendChild(tdM);
     const tdK = document.createElement('td');
+    tdK.style.whiteSpace = 'nowrap';
     if (p) {
       const a = document.createElement('a');
       a.href = 'https://dexscreener.com/robinhoodchain/' + (p.pairAddress || token);
       a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'chart ↗';
       tdK.appendChild(a);
+      tdK.appendChild(document.createTextNode(' '));
     }
+    const sh = document.createElement('a');
+    sh.href = shareHref(token, symText, p);
+    sh.target = '_blank'; sh.rel = 'noopener'; sh.textContent = '𝕏';
+    sh.title = 'Share on X';
+    tdK.appendChild(sh);
     tr.appendChild(tdK);
     return tr;
   }
@@ -1046,6 +1120,57 @@
     } finally { renderingGrads = false; }
   }
 
+  /* ---- watchlist curve progress + browser alerts ---- */
+  const watchCurve = new Map();   // token -> {bal, thr} for pre-graduation watched tokens
+  async function refreshWatchCurves() {
+    const need = watchlist.filter(t => {
+      if (reliablePair(gradMeta.get(t))) return false;
+      const l = launches.find(x => x.token === t);
+      return l && l.pair === ZERO && l.thr > 0n;
+    }).slice(0, 30);
+    if (!need.length) return;
+    try {
+      const res = await rpcBatch(need.map(t => ({ method: 'eth_getBalance', params: [launches.find(x => x.token === t).curve, 'latest'] })));
+      res.forEach((r, i) => { if (r) watchCurve.set(need[i], { bal: hexBig(r), thr: launches.find(x => x.token === need[i]).thr }); });
+    } catch (e) { /* keep old */ }
+  }
+
+  let notifOn = false;
+  try { notifOn = localStorage.getItem('ponsscan_notif') === '1' && typeof Notification !== 'undefined' && Notification.permission === 'granted'; } catch (e) { /* off */ }
+  function paintNotifBtn() { const b = $('wpNotif'); if (b) b.textContent = notifOn ? '🔔' : '🔕'; }
+  function notify(title, body) {
+    if (!notifOn) return;
+    try { new Notification(title, { body }); } catch (e) { /* blocked */ }
+  }
+  const alertedGrad = new Set();
+  const alertBase = new Map(); // token -> baseline price for ±50% alerts
+  function checkWatchAlerts() {
+    const gradSet = new Set(gradList.map(g => g.token));
+    watchlist.forEach(t => {
+      const pRaw = gradMeta.get(t);
+      const p = reliablePair(pRaw) ? pRaw : null;
+      const symText = pRaw ? pRaw.baseToken.symbol : sym(t);
+      if (gradSet.has(t) && !alertedGrad.has(t)) {
+        alertedGrad.add(t);
+        const g = gradList.find(x => x.token === t);
+        // only alert for graduations that happened after the page loaded (not history)
+        if (g && (Date.now() / 1000 - blockTime(g.block)) < 300) notify('🎓 ' + symText + ' graduated!', 'Curve completed — pool is live. Tap your PonsScan tab.');
+      }
+      const price = p && parseFloat(p.priceUsd);
+      if (price) {
+        const base = alertBase.get(t);
+        if (base == null) alertBase.set(t, price);
+        else {
+          const chg = (price - base) / base;
+          if (Math.abs(chg) >= 0.5) {
+            notify((chg > 0 ? '📈 ' : '📉 ') + symText + ' ' + (chg > 0 ? '+' : '') + Math.round(chg * 100) + '%', 'Since your last alert baseline · MC ' + fmtUsd(p.marketCap != null ? p.marketCap : p.fdv));
+            alertBase.set(t, price);
+          }
+        }
+      }
+    });
+  }
+
   function renderWatchPanel() {
     // slim fixed sidebar (desktop) — same data, compact rows
     const list = $('wpList');
@@ -1058,25 +1183,35 @@
       return;
     }
     watchlist.slice(0, 30).forEach(t => {
-      const p = gradMeta.get(t);
-      const symText = p ? p.baseToken.symbol : sym(t);
+      const pRaw = gradMeta.get(t);
+      const p = reliablePair(pRaw) ? pRaw : null;
+      const symText = pRaw ? pRaw.baseToken.symbol : sym(t);
       const row = document.createElement('div'); row.className = 'wp-row'; row.title = t;
       const img = document.createElement('img'); img.loading = 'lazy'; img.alt = '';
       const fb = avatarFor(t, symText);
-      img.src = (p && p.info && p.info.imageUrl) ? p.info.imageUrl : fb;
+      img.src = (pRaw && pRaw.info && pRaw.info.imageUrl) ? pRaw.info.imageUrl : fb;
       img.addEventListener('error', () => { img.src = fb; }, { once: true });
       const mid = document.createElement('div'); mid.className = 'wp-mid';
       const s = document.createElement('div'); s.className = 'wp-sym'; s.textContent = symText;
       const m = document.createElement('div'); m.className = 'wp-mcap';
-      const mc = p ? (p.marketCap != null ? p.marketCap : p.fdv) : null;
-      m.textContent = mc != null ? 'MC ' + fmtUsd(mc) : '';
+      const mcv = p ? (p.marketCap != null ? p.marketCap : p.fdv) : null;
+      m.textContent = mcv != null ? 'MC ' + fmtUsd(mcv) : '';
       mid.append(s, m);
+      const cv = !p ? watchCurve.get(t) : null;
+      if (cv) {
+        const pct = Math.min(100, Number(cv.bal * 1000n / cv.thr) / 10);
+        m.textContent = fmtWeth(cv.bal) + ' / ' + fmtWeth(cv.thr).replace(/\.?0+$/, '') + ' ETH';
+        const bar = document.createElement('div'); bar.className = 'wp-bar';
+        const f = document.createElement('div'); f.className = 'f'; f.style.width = pct + '%';
+        bar.appendChild(f); mid.appendChild(bar);
+      }
       const right = document.createElement('div'); right.className = 'wp-right';
       const pr = document.createElement('div'); pr.className = 'wp-price';
-      pr.textContent = p && p.priceUsd ? '$' + parseFloat(p.priceUsd).toPrecision(3) : '…';
+      pr.textContent = p && p.priceUsd ? '$' + parseFloat(p.priceUsd).toPrecision(3) : (cv ? '' : '…');
       const ch = document.createElement('div'); ch.className = 'wp-ch';
       const c = p && p.priceChange && p.priceChange.h24;
       if (c != null) { ch.classList.add(c >= 0 ? 'pc-up' : 'pc-down'); ch.textContent = (c >= 0 ? '+' : '') + Math.round(c) + '%'; }
+      else if (cv) { ch.textContent = Math.min(100, Number(cv.bal * 1000n / cv.thr) / 10).toFixed(0) + '%'; ch.style.color = 'var(--series-1)'; }
       right.append(pr, ch);
       const x = document.createElement('button'); x.type = 'button'; x.className = 'wp-x'; x.textContent = '✕'; x.title = 'Remove';
       x.addEventListener('click', e => { e.stopPropagation(); toggleWatch(t); });
@@ -1097,16 +1232,20 @@
       const items = watchlist.slice(0, 30);
       await enrichMeta(items);
       await fetchSymbols(items.filter(t => !gradMeta.get(t)));
+      await refreshWatchCurves();
       const tbody = document.querySelector('#watchTable tbody');
       tbody.replaceChildren();
       items.forEach(t => {
         const g = gradList.find(x => x.token === t);
-        tbody.appendChild(buildMarketRow(t, g ? g.block : null, gradMeta.get(t), creatorStatsFor(t)));
+        tbody.appendChild(buildMarketRow(t, g ? g.block : null, gradMeta.get(t), creatorStatsFor(t), reliablePair(gradMeta.get(t)) ? null : watchCurve.get(t)));
       });
       renderWatchPanel();
+      checkWatchAlerts();
     } finally { renderingWatch = false; }
   }
 
+  const curvePrev = new Map(); // token -> {bal, t} for buy-velocity
+  const curveHeat = new Map(); // token -> ETH/min
   async function gradRadar() {
     if (!rpcLive || !launches.length) return;
     const list = $('radarList');
@@ -1124,6 +1263,16 @@
       if (i + 40 < recent.length) await sleep(350);
     }
     if (!balances.length) { list.textContent = 'Curve scan failed — retrying on next refresh.'; return; }
+    // buy velocity (ETH/min) from balance deltas between radar passes
+    const now = Date.now();
+    balances.forEach(({ l, bal }) => {
+      const prev = curvePrev.get(l.token);
+      if (prev && now - prev.t > 60000) {
+        const ethDelta = Number((bal - prev.bal) / 10n ** 12n) / 1e6;
+        curveHeat.set(l.token, ethDelta * 60000 / (now - prev.t));
+      }
+      curvePrev.set(l.token, { bal, t: now });
+    });
     const oldest = recent[recent.length - 1].block;
     const winMin = Math.round((chain.latestBlock - oldest) / chain.bps / 60);
     $('radarDesc').textContent = 'The ' + recent.length + ' newest ETH-quoted launches (last ~' + (winMin >= 90 ? (winMin / 60).toFixed(1) + 'h' : winMin + ' min') + ') ranked by ETH accumulated on their bonding curve vs their graduation threshold — read live. Click to inspect.';
@@ -1149,6 +1298,13 @@
       meter.appendChild(fill);
       const val = document.createElement('span'); val.className = 'radar-val'; val.textContent = fmtWeth(bal) + ' / ' + fmtWeth(thr).replace(/\.?0+$/, '');
       row.append(s, meter, val);
+      const heat = curveHeat.get(l.token);
+      if (heat != null && heat > 0.02) {
+        const h = document.createElement('span'); h.className = 'heat';
+        h.textContent = '🔥+' + heat.toFixed(2) + '/m';
+        h.title = 'Buy velocity: +' + heat.toFixed(3) + ' ETH per minute since the last scan';
+        row.appendChild(h);
+      }
       row.addEventListener('pointermove', e => showTip(e, pct.toFixed(1) + '% to graduation', fmtWeth(bal) + ' ETH on curve · threshold ' + fmtWeth(thr) + ' · ' + sym(l.token)));
       row.addEventListener('pointerleave', hideTip);
       list.appendChild(row);
@@ -1265,6 +1421,8 @@
       inspCell('Oldest in window', count ? timeAgo(Math.max(1, Date.now() / 1000 - blockTime(list[count - 1].block))) : '—', true)
     );
     $('inspGradWrap').style.display = 'none';
+    $('inspChart').style.display = 'none';
+    $('inspChart').replaceChildren();
     const fx = $('inspFactors'); fx.replaceChildren();
     const fstrong = document.createElement('strong'); fstrong.textContent = 'Creator signals: ';
     fx.append(fstrong, document.createTextNode(
@@ -1328,7 +1486,12 @@
   async function inspect(addrRaw) {
     const addr = (addrRaw || $('inspInput').value).trim();
     const status = $('inspStatus'), result = $('inspResult');
-    if (!isAddr(addr)) { status.textContent = 'Enter a valid 0x… address (40 hex characters).'; return; }
+    if (!isAddr(addr)) {
+      if (addr.length >= 2) { status.textContent = 'Searching by name…'; runSearch(addr).then(() => { status.textContent = ''; }); }
+      else status.textContent = 'Enter a 0x… address or a token name.';
+      return;
+    }
+    hideSearch();
     if (inspecting) return;
     inspecting = true;
     $('inspBtn').disabled = true;
@@ -1350,13 +1513,14 @@
         fetchJson('https://api.dexscreener.com/latest/dex/tokens/' + a).catch(() => null),
         rpcLive ? findLaunch(a) : Promise.resolve(null)
       ]);
-      let pair = null;
+      let pairRaw = null;
       if (dex && dex.pairs) {
         const own = dex.pairs.filter(p => (p.baseToken && p.baseToken.address || '').toLowerCase() === a);
-        pair = own.reduce((best, p) => (!best || (p.liquidity && p.liquidity.usd || 0) > (best.liquidity && best.liquidity.usd || 0) ? p : best), null);
+        pairRaw = own.reduce((best, p) => (!best || (p.liquidity && p.liquidity.usd || 0) > (best.liquidity && best.liquidity.usd || 0) ? p : best), null);
       }
+      const pair = reliablePair(pairRaw) ? pairRaw : null; // curve-phase pools carry bogus prices
       // Not a token? Try the address as a creator wallet instead.
-      if (!launch && !pair && rpcLive) {
+      if (!launch && !pairRaw && rpcLive) {
         status.textContent = 'No token found at this address — checking creator activity…';
         const { list, full } = await findCreatorLaunches(a);
         if (list.length) {
@@ -1369,7 +1533,7 @@
       $('inspCreatorList').style.display = 'none';
       // Metadata
       status.textContent = 'Reading on-chain state…';
-      let name = pair && pair.baseToken.name, symbol = pair && pair.baseToken.symbol;
+      let name = pairRaw && pairRaw.baseToken.name, symbol = pairRaw && pairRaw.baseToken.symbol;
       if (!symbol && rpcLive) {
         try {
           const [nRes, sRes] = await rpcBatch([ethCall(a, '0x06fdde03'), ethCall(a, '0x95d89b41')]);
@@ -1412,7 +1576,7 @@
       vc.append(ic, document.createTextNode(' ' + v.text + ' · score ' + score));
       const grid = $('inspGrid'); grid.replaceChildren();
       grid.append(
-        inspCell('Price', pair ? '$' + parseFloat(pair.priceUsd).toPrecision(3) : 'not indexed'),
+        inspCell('Price', pair ? '$' + parseFloat(pair.priceUsd).toPrecision(3) : (launch && !graduated ? 'on curve' : 'not indexed')),
         inspCell('Volume 24h', pair ? fmtUsd(pair.volume && pair.volume.h24) : '—'),
         inspCell('Liquidity', pair ? fmtUsd(pair.liquidity && pair.liquidity.usd) : '—'),
         inspCell('FDV', pair ? fmtUsd(pair.fdv) : '—'),
@@ -1432,7 +1596,7 @@
         $('inspGradFill').style.width = '100%';
         $('inspGradFill').style.background = 'var(--status-good)';
         $('inspGradVal').textContent = '🎓 graduated' + (isV2 ? ' (curve completed, pool live)' : ' (' + fmtWeth(poolBal || 0n) + ' WETH)');
-      } else if (poolBal != null && thr) {
+      } else if (poolBal != null && thr && (!isV2 || launch.pair === ZERO)) {
         gw.style.display = 'block';
         const pct = Math.min(100, Number(poolBal * 1000n / thr) / 10);
         $('inspGradFill').style.width = pct + '%';
@@ -1452,6 +1616,19 @@
       const mk = (href, text) => { const x = document.createElement('a'); x.href = href; x.target = '_blank'; x.rel = 'noopener'; x.textContent = text; return x; };
       links.append(mk('https://www.ponsfamily.com/launchpad/' + a, 'View on pons ↗'), mk('https://robinhoodchain.blockscout.com/token/' + a, 'Blockscout ↗'));
       if (pair) links.append(mk('https://dexscreener.com/robinhoodchain/' + pair.pairAddress, 'DexScreener ↗'));
+      links.append(mk(shareHref(a, symbol, pair), 'Share on 𝕏 ↗'));
+      // live chart embed (DexScreener widget) for tokens with a pool
+      const chartEl = $('inspChart');
+      chartEl.replaceChildren();
+      if (pair && pair.pairAddress) {
+        const dt = root.getAttribute('data-theme');
+        const isDark = dt ? dt === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const ifr = document.createElement('iframe');
+        ifr.loading = 'lazy';
+        ifr.src = 'https://dexscreener.com/robinhoodchain/' + pair.pairAddress + '?embed=1&theme=' + (isDark ? 'dark' : 'light') + '&trades=0&info=0';
+        chartEl.appendChild(ifr);
+        chartEl.style.display = 'block';
+      } else chartEl.style.display = 'none';
       status.textContent = '';
       result.style.display = 'block';
     } catch (e) {
@@ -1460,6 +1637,57 @@
     $('inspBtn').disabled = false;
     inspecting = false;
   }
+  /* ================= NAME SEARCH (DexScreener) ================= */
+  let searchSeq = 0, searchTimer = null;
+  function hideSearch() { const b = $('searchResults'); b.style.display = 'none'; b.replaceChildren(); }
+  async function runSearch(q) {
+    const seq = ++searchSeq;
+    const box = $('searchResults');
+    const filt = d => (d.pairs || []).filter(p => p.chainId === 'robinhood');
+    let res = [];
+    try {
+      res = filt(await fetchJson('https://api.dexscreener.com/latest/dex/search?q=' + encodeURIComponent(q)));
+      if (!res.length) res = filt(await fetchJson('https://api.dexscreener.com/latest/dex/search?q=' + encodeURIComponent(q + ' robinhood')));
+    } catch (e) { /* show nothing */ }
+    if (seq !== searchSeq) return;
+    const seen = new Set(); const rows = [];
+    for (const p of res) {
+      const a = (p.baseToken && p.baseToken.address || '').toLowerCase();
+      if (a && !seen.has(a)) { seen.add(a); rows.push(p); if (rows.length >= 8) break; }
+    }
+    box.replaceChildren();
+    if (!rows.length) {
+      const d = document.createElement('div'); d.className = 'sr-row'; d.style.cursor = 'default';
+      d.textContent = 'No Robinhood Chain tokens found for "' + q + '"';
+      box.appendChild(d);
+    }
+    rows.forEach(p => {
+      const a = p.baseToken.address.toLowerCase();
+      const row = document.createElement('div'); row.className = 'sr-row';
+      const img = document.createElement('img'); img.loading = 'lazy'; img.alt = '';
+      const fb = avatarFor(a, p.baseToken.symbol);
+      img.src = (p.info && p.info.imageUrl) ? p.info.imageUrl : fb;
+      img.addEventListener('error', () => { img.src = fb; }, { once: true });
+      const s = document.createElement('span'); s.className = 'sr-sym'; s.textContent = p.baseToken.symbol;
+      const n = document.createElement('span'); n.className = 'sr-name'; n.textContent = p.baseToken.name || '';
+      const mc = document.createElement('span'); mc.className = 'sr-mc';
+      if (reliablePair(p)) {
+        const mcv = p.marketCap != null ? p.marketCap : p.fdv;
+        mc.textContent = (mcv != null ? 'MC ' + fmtUsd(mcv) : '') + (p.volume && p.volume.h24 ? ' · vol ' + fmtUsd(p.volume.h24) : '');
+      } else mc.textContent = 'on curve (pre-graduation)';
+      row.append(img, s, n, mc);
+      row.addEventListener('click', () => { hideSearch(); gradMeta.set(a, p); $('inspInput').value = a; inspect(a); });
+      box.appendChild(row);
+    });
+    box.style.display = 'block';
+  }
+  $('inspInput').addEventListener('input', () => {
+    const v = $('inspInput').value.trim();
+    clearTimeout(searchTimer);
+    if (isAddr(v) || v.length < 2) { hideSearch(); return; }
+    searchTimer = setTimeout(() => runSearch(v), 500);
+  });
+
   $('inspBtn').addEventListener('click', () => inspect());
   $('inspInput').addEventListener('keydown', e => { if (e.key === 'Enter') inspect(); });
   // deep link: ?token=0x… auto-opens the inspector (used by PonsScanBot announcements)
@@ -1719,6 +1947,19 @@
   $('sortLiq').addEventListener('click', () => setSort('liq'));
   setSort(gradSort);
   renderWatchTable();
+  paintNotifBtn();
+  $('wpNotif').addEventListener('click', async () => {
+    if (typeof Notification === 'undefined') return;
+    if (notifOn) {
+      notifOn = false;
+    } else {
+      const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      notifOn = perm === 'granted';
+      if (notifOn) notify('🔔 PonsScan alerts on', 'You will be notified about graduations and ±50% moves of watched tokens while this tab is open.');
+    }
+    try { localStorage.setItem('ponsscan_notif', notifOn ? '1' : '0'); } catch (e) { /* ok */ }
+    paintNotifBtn();
+  });
   init();
 })();
 </script>
