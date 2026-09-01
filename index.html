@@ -185,6 +185,16 @@
   .radar-sym:hover { color: var(--series-1); }
   .radar-val { width: 90px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
   .scan-status { font-size: 11px; color: var(--text-muted); }
+
+  /* Graduations board */
+  .tok-cell { display: flex; align-items: center; gap: 9px; min-width: 150px; }
+  .tok-logo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; background: var(--grid); }
+  .tok-nm { line-height: 1.25; }
+  .tok-nm .s { font-weight: 650; }
+  .tok-nm .n { font-size: 10.5px; color: var(--text-muted); max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc-up { color: var(--delta-good); font-weight: 650; }
+  .pc-down { color: var(--status-critical); font-weight: 650; }
+  #gradTable td { padding: 7px 10px; }
 </style>
 </head>
 <body>
@@ -253,6 +263,17 @@
   </div>
 
   <div class="card">
+    <div class="card-head"><h2>🎓 Live graduations <span class="scan-status" id="gradCount"></span></h2><button class="mini-btn" id="gradRefreshBtn" type="button">↻ Refresh</button></div>
+    <div class="desc">Tokens whose bonding curve just completed — the pool is live and trading. Newest first, refreshed every 60s. Click a token to rug-check it. <strong>Graduation ≠ safe.</strong></div>
+    <div class="tscroll">
+    <table id="gradTable">
+      <thead><tr><th>Token</th><th>Graduated</th><th>Price</th><th>24h</th><th>Liquidity</th><th>Vol 24h</th><th></th></tr></thead>
+      <tbody><tr><td colspan="7" style="color:var(--text-muted)">Loading graduations…</td></tr></tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Launch rate — last 24 hours <span class="scan-status" id="scanStatus"></span></h2>
     <div class="desc">New tokens per hour on the active factory — every <code>TokenLaunched</code> event, counted directly from chain logs (no sampling)</div>
     <svg id="rateChart" width="100%" viewBox="0 0 1020 240" role="img" aria-label="Column chart of hourly launch rate over the last 24 hours"></svg>
@@ -270,8 +291,7 @@
     <div class="card">
       <h2>Graduation radar</h2>
       <div class="desc" id="radarDesc">Newest launches closest to the 4.2 WETH graduation threshold (WETH balance of each launch pool, read live). Click to inspect.</div>
-      <div id="radarGrads" style="display:none;font-size:12px;margin-bottom:8px"></div>
-      <div id="radarList"><span style="font-size:12px;color:var(--text-muted)">Scanning pools…</span></div>
+      <div id="radarList"><span style="font-size:12px;color:var(--text-muted)">Scanning curves…</span></div>
     </div>
   </div>
 
@@ -590,13 +610,13 @@
     });
   }
 
-  // V2 graduations in a block range → Set of TOKEN addresses (topic1 = token; event-driven, definitive)
-  async function getGradTokens(fromBlock, toBlock) {
+  // V2 graduations in a block range → [{token, block}] (topic1 = token; event-driven, definitive)
+  async function getGradLogs(fromBlock, toBlock) {
     const res = await rpc('eth_getLogs', [{
       fromBlock: '0x' + fromBlock.toString(16), toBlock: '0x' + toBlock.toString(16),
       address: FACTORY_V2, topics: [TOPIC_GRADUATED]
     }], 60000);
-    return new Set((res || []).map(l => topicAddr(l.topics[1])));
+    return (res || []).map(l => ({ token: topicAddr(l.topics[1]), block: hexNum(l.blockNumber) }));
   }
 
   async function scan24h() {
@@ -748,6 +768,7 @@
       }
       setPill(true, 'Live · block ' + chain.latestBlock.toLocaleString('en-US'));
       await renderFeed();
+      await refreshGradFeed();
     } catch (e) { /* transient */ }
   }
 
@@ -780,29 +801,124 @@
     });
   }
 
-  /* ================= GRADUATION RADAR (V2: curve reserves + grad events) ================= */
+  /* ================= LIVE GRADUATIONS BOARD ================= */
+  let gradList = [];       // [{token, block}] newest-first, ~last 24h
+  let gradFeedCursor = 0;  // next block for incremental updates
+  const gradMeta = new Map(); // token -> best DexScreener pair (cache/fallback)
+
   async function refreshGrads24h() {
-    // definitive: TOPIC_GRADUATED events over the last 24h (topic1 = token address)
     try {
-      const grads = await retry(() => getGradTokens(chain.latestBlock - DAY_BLOCKS, chain.latestBlock), 2, 1500);
-      const gradsEl = $('radarGrads');
-      const latest = [...grads].slice(-6).reverse();
-      await fetchSymbols(latest);
-      gradsEl.style.display = 'block';
-      gradsEl.replaceChildren();
-      const strong = document.createElement('strong');
-      strong.textContent = '🎓 ' + grads.size + ' graduations in the last 24h';
-      gradsEl.appendChild(strong);
-      if (latest.length) {
-        gradsEl.appendChild(document.createTextNode(' — latest: '));
-        latest.forEach((t, i) => {
-          if (i) gradsEl.appendChild(document.createTextNode(' · '));
-          const a = document.createElement('span'); a.className = 'feed-sym'; a.textContent = sym(t);
-          a.addEventListener('click', () => { $('inspInput').value = t; inspect(t); });
-          gradsEl.appendChild(a);
-        });
-      }
+      const logs = await retry(() => getGradLogs(chain.latestBlock - DAY_BLOCKS, chain.latestBlock), 2, 1500);
+      const seen = new Set();
+      gradList = logs.reverse().filter(g => !seen.has(g.token) && seen.add(g.token));
+      gradFeedCursor = chain.latestBlock + 1;
+      $('gradCount').textContent = '· ' + gradList.length + ' in the last 24h';
+      await renderGradTable();
     } catch (e) { /* next cycle */ }
+  }
+
+  // cheap incremental check, piggybacks on the 60s feed cycle
+  async function refreshGradFeed() {
+    if (!rpcLive || !gradFeedCursor || chain.latestBlock < gradFeedCursor) return;
+    try {
+      const logs = await getGradLogs(gradFeedCursor, chain.latestBlock);
+      gradFeedCursor = chain.latestBlock + 1;
+      if (logs.length) {
+        const have = new Set(gradList.map(g => g.token));
+        const fresh = logs.reverse().filter(g => !have.has(g.token));
+        gradList = fresh.concat(gradList);
+        $('gradCount').textContent = '· ' + gradList.length + ' in the last 24h';
+      }
+      await renderGradTable(); // refreshes prices even without new grads
+    } catch (e) { /* next cycle */ }
+  }
+
+  function avatarFor(addr, symText) {
+    const hue = parseInt(addr.slice(2, 8), 16) % 360;
+    const ini = (symText || '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?';
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56"><circle cx="28" cy="28" r="28" fill="hsl(' + hue + ',55%,42%)"/><text x="28" y="36" font-family="system-ui,sans-serif" font-size="20" font-weight="700" fill="#fff" text-anchor="middle">' + ini + '</text></svg>';
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  }
+
+  let renderingGrads = false;
+  async function renderGradTable() {
+    if (renderingGrads) return;
+    renderingGrads = true;
+    try {
+      const tbody = document.querySelector('#gradTable tbody');
+      const items = gradList.slice(0, 15);
+      if (!items.length) {
+        tbody.replaceChildren();
+        const tr = document.createElement('tr'); const td = document.createElement('td');
+        td.colSpan = 7; td.style.color = 'var(--text-muted)'; td.textContent = 'No graduations in this window yet.';
+        tr.appendChild(td); tbody.appendChild(tr);
+        return;
+      }
+      // one DexScreener call refreshes market data for all visible rows
+      try {
+        const data = await fetchJson('https://api.dexscreener.com/latest/dex/tokens/' + items.map(g => g.token).join(','));
+        const byTok = {};
+        (data.pairs || []).forEach(p => {
+          const a = (p.baseToken && p.baseToken.address || '').toLowerCase();
+          if (!byTok[a] || (p.liquidity && p.liquidity.usd || 0) > (byTok[a].liquidity && byTok[a].liquidity.usd || 0)) byTok[a] = p;
+        });
+        items.forEach(g => { if (byTok[g.token]) gradMeta.set(g.token, byTok[g.token]); });
+      } catch (e) { /* keep cached */ }
+      await fetchSymbols(items.filter(g => !gradMeta.get(g.token)).map(g => g.token));
+      tbody.replaceChildren();
+      items.forEach(g => {
+        const p = gradMeta.get(g.token);
+        const symText = p ? p.baseToken.symbol : sym(g.token);
+        const nameText = p && p.baseToken.name && p.baseToken.name !== symText ? p.baseToken.name : '';
+        const tr = document.createElement('tr');
+        // token cell
+        const tdT = document.createElement('td');
+        const cell = document.createElement('div'); cell.className = 'tok-cell';
+        const img = document.createElement('img'); img.className = 'tok-logo'; img.loading = 'lazy'; img.alt = '';
+        const fallback = avatarFor(g.token, symText);
+        img.src = (p && p.info && p.info.imageUrl) ? p.info.imageUrl : fallback;
+        img.addEventListener('error', () => { img.src = fallback; }, { once: true });
+        const nm = document.createElement('div'); nm.className = 'tok-nm';
+        const s = document.createElement('div'); s.className = 's feed-sym'; s.textContent = symText; s.title = g.token;
+        s.addEventListener('click', () => { $('inspInput').value = g.token; inspect(g.token); });
+        nm.appendChild(s);
+        if (nameText) { const n = document.createElement('div'); n.className = 'n'; n.textContent = nameText; nm.appendChild(n); }
+        cell.append(img, nm, copyBtn(g.token));
+        tdT.appendChild(cell); tr.appendChild(tdT);
+        // age
+        const tdA = document.createElement('td');
+        tdA.textContent = timeAgo(Math.max(1, Date.now() / 1000 - blockTime(g.block)));
+        tdA.style.color = 'var(--text-secondary)';
+        tr.appendChild(tdA);
+        // price
+        const tdP = document.createElement('td');
+        tdP.textContent = p && p.priceUsd ? '$' + parseFloat(p.priceUsd).toPrecision(3) : 'indexing…';
+        tr.appendChild(tdP);
+        // 24h change
+        const tdC = document.createElement('td');
+        const ch = p && p.priceChange && p.priceChange.h24;
+        if (ch != null) {
+          const sp = document.createElement('span');
+          sp.className = ch >= 0 ? 'pc-up' : 'pc-down';
+          sp.textContent = (ch >= 0 ? '+' : '') + Math.round(ch) + '%';
+          tdC.appendChild(sp);
+        } else tdC.textContent = '—';
+        tr.appendChild(tdC);
+        // liq, vol
+        const tdL = document.createElement('td'); tdL.textContent = p ? fmtUsd(p.liquidity && p.liquidity.usd) : '—'; tr.appendChild(tdL);
+        const tdV = document.createElement('td'); tdV.textContent = p ? fmtUsd(p.volume && p.volume.h24) : '—'; tr.appendChild(tdV);
+        // link
+        const tdK = document.createElement('td');
+        if (p) {
+          const a = document.createElement('a');
+          a.href = 'https://dexscreener.com/robinhoodchain/' + (p.pairAddress || g.token);
+          a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'chart ↗';
+          tdK.appendChild(a);
+        }
+        tr.appendChild(tdK);
+        tbody.appendChild(tr);
+      });
+    } finally { renderingGrads = false; }
   }
 
   async function gradRadar() {
@@ -1387,6 +1503,7 @@
     }
     Promise.allSettled([refreshPons(), refreshSampleMarket().then(() => { renderSafetyTable(); renderDetailTable(); renderSurvival(); })]);
     if (rpcLive) {
+      refreshGrads24h(); // graduations board fills immediately (single light query)
       await refreshBurn();
       await scan24h();
       await gradRadar();
@@ -1402,6 +1519,11 @@
   $('refreshBtn').addEventListener('click', () => refreshAll(true));
   $('feedRefreshBtn').addEventListener('click', async () => {
     const b = $('feedRefreshBtn');
+    b.disabled = true; b.textContent = '…';
+    try { await refreshFeedData(); } finally { b.textContent = '↻ Refresh'; b.disabled = false; }
+  });
+  $('gradRefreshBtn').addEventListener('click', async () => {
+    const b = $('gradRefreshBtn');
     b.disabled = true; b.textContent = '…';
     try { await refreshFeedData(); } finally { b.textContent = '↻ Refresh'; b.disabled = false; }
   });
