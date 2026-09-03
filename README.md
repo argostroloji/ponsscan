@@ -9,6 +9,7 @@ Independent analytics & safety dashboard for the [pons](https://ponsfamily.com) 
 ## Features
 
 - **🔍 Token Inspector (rug-check)** — paste any address *or search by name*: creator + their serial-launch history, real (non-pool) holder count, market state, graduation status and a transparent 0–100 safety score — plus an embedded live chart for graduated tokens. Works for **creator wallets** too (their launches, graduation rate, serial-deployer check). Deep-linkable via `?token=0x…`.
+- **🕵️ Deep checks** — creator wallet age, the wallet that first funded it and how many *other* recent deployers that same funder seeded (sybil clusters), the creator's own allocation (bought / sold / burned), holder concentration (top holder, top-10, contracts excluded) and the outcomes of the creator's previous graduates — each one a transparent, weighted score factor.
 - **🎓 Live Graduations board** — every token whose bonding curve just completed, with logo, price, 24h change, liquidity, volume and market cap; sortable by Newest / Top 24h / Liquidity; refreshed every 60s straight from the factory's graduation events.
 - **⭐ Watchlist** — star any token into a DexScreener-style sidebar (saved in your browser). Pre-graduation tokens show their live curve progress bar; optional browser notifications on graduation or ±50% moves.
 - **👤 Creator scorecards** — every graduated token carries its creator's 24h record (launches + graduations); serial deployers are flagged in red. One click opens the full creator profile.
