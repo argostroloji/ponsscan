@@ -2,7 +2,7 @@
 
 Independent analytics & safety dashboard for the [pons](https://ponsfamily.com) **V2** launchpad on **Robinhood Chain** — a single self-contained HTML file that reads the chain directly from your browser. No backend, no API keys, no wallet connection.
 
-**🔴 Live: [ponsscan.xyz](https://ponsscan.xyz)** · 🎓 [Graduation alerts on Telegram](https://t.me/ponsscan) · 𝕏 [@Argostroloji](https://x.com/Argostroloji)
+**🔴 Live: [ponsscan.xyz](https://ponsscan.xyz)** · 🎓 [Graduation alerts on Telegram](https://t.me/ponsscan) · 𝕏 [@pons_scan](https://x.com/pons_scan)
 
 ![PonsScan screenshot](screenshot.png)
 
