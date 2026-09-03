@@ -453,7 +453,7 @@
     </table>
     </div>
     <div class="note" style="font-size:11px;color:var(--text-muted);margin-top:10px">
-      Formula: base 50 · single-launch creator +20, repeat (2–4) −5, serial (≥5 in window) −25 · actively traded +10, quiet +5, not indexed −10 · ≥3 real holders +15, 1–2 +5, zero holders despite &gt;$1K volume −30 (wash-trading signal), zero holders −5 · graduated +10. Unknown factors score 0. Score is clamped to 5–95.
+      Formula: base 50 · single-launch creator +20, repeat (2–4) −5, serial (≥5 in window) −25 · actively traded +10, quiet +5, no live pool −10 · ≥3 real holders +15, 1–2 +5, zero holders despite &gt;$1K volume −30 (wash-trading signal), zero holders −5 · graduated +10. The inspector adds deep checks: creator wallet age (−15 / −10 / +5), funding-wallet cluster (funder seeded other deployers −8 / −20), creator allocation sold (−12 / −25) or burned (+8), holder concentration (top holder &gt;20% −15, top-10 &gt;60% −10, well distributed +5), creator's previous graduates collapsed (−8 / −20) or holding (+5). Unknown factors score 0. Clamped to 5–95.
     </div>
   </div>
 
@@ -1534,6 +1534,95 @@
     } catch (e) { return null; }
   }
 
+  /* ================= DEEP CHECKS (creator funding, dev allocation, concentration, record) ================= */
+  const BS = 'https://robinhoodchain.blockscout.com/api';
+  const SUPPLY = 10n ** 27n; // pons launches are fixed 1B supply
+  const isBurnAddr = a => a === ZERO || a === DEAD;
+
+  // holder stats from Blockscout v2 (contracts = pools/lockers/curves are excluded via is_contract)
+  async function fetchHolderStats(addr, extraExclude) {
+    try {
+      const data = await fetchJson('https://robinhoodchain.blockscout.com/api/v2/tokens/' + addr + '/holders');
+      if (!data.items) return null;
+      const excl = new Set((extraExclude || []).filter(Boolean).map(x => x.toLowerCase()));
+      const real = data.items.map(h => {
+        const a = (h.address && h.address.hash || '').toLowerCase();
+        let v = 0n; try { v = BigInt(h.value); } catch (e) { /* ignore */ }
+        return { a, v, contract: !!(h.address && h.address.is_contract) };
+      }).filter(h => h.a && !h.contract && !isBurnAddr(h.a) && !excl.has(h.a) && h.v > 10n ** 18n);
+      real.sort((x, y) => (y.v > x.v ? 1 : y.v < x.v ? -1 : 0));
+      const pct = v => Number(v * 10000n / SUPPLY) / 100;
+      const top10 = real.slice(0, 10).reduce((s, h) => s + h.v, 0n);
+      return { count: real.length, top1Pct: real.length ? pct(real[0].v) : 0, top10Pct: pct(top10) };
+    } catch (e) { return null; }
+  }
+
+  async function creatorFirstTx(creator) {
+    try {
+      const r = await fetchJson(BS + '?module=account&action=txlist&address=' + creator + '&sort=asc&page=1&offset=1');
+      let t = r.status === '1' && r.result && r.result[0];
+      if (!t) {
+        const ri = await fetchJson(BS + '?module=account&action=txlistinternal&address=' + creator + '&sort=asc&page=1&offset=1');
+        t = ri.status === '1' && ri.result && ri.result[0];
+      }
+      if (!t) return null;
+      return { funder: (t.from || '').toLowerCase(), ts: parseInt(t.timeStamp, 10), value: BigInt(t.value || '0'), toSelf: (t.to || '').toLowerCase() === creator };
+    } catch (e) { return null; }
+  }
+
+  // how many OTHER recent deployers did this funder seed? (sybil / factory clusters)
+  async function funderCluster(funder, creator) {
+    try {
+      const r = await fetchJson(BS + '?module=account&action=txlist&address=' + funder + '&sort=desc&page=1&offset=200');
+      if (r.status !== '1' || !Array.isArray(r.result)) return null;
+      const creators = new Set(launches.map(l => l.creator));
+      const recips = new Set();
+      r.result.forEach(t => {
+        if ((t.from || '').toLowerCase() !== funder) return;
+        let v = 0n; try { v = BigInt(t.value || '0'); } catch (e) { /* ignore */ }
+        if (v > 0n) recips.add((t.to || '').toLowerCase());
+      });
+      recips.delete(creator);
+      let seeded = 0; recips.forEach(a => { if (creators.has(a)) seeded++; });
+      return { recipients: recips.size, seededDeployers: seeded };
+    } catch (e) { return null; }
+  }
+
+  // creator's own allocation of this token: bought vs sold vs burned
+  async function devAllocation(creator, token) {
+    try {
+      const r = await fetchJson(BS + '?module=account&action=tokentx&address=' + creator + '&contractaddress=' + token + '&sort=asc&page=1&offset=100');
+      if (r.status !== '1' || !Array.isArray(r.result)) return { bought: 0n, sold: 0n, burned: 0n };
+      let bought = 0n, sold = 0n, burned = 0n;
+      r.result.forEach(t => {
+        let v = 0n; try { v = BigInt(t.value || '0'); } catch (e) { /* ignore */ }
+        const from = (t.from || '').toLowerCase(), to = (t.to || '').toLowerCase();
+        if (to === creator) bought += v;
+        else if (from === creator) { if (isBurnAddr(to)) burned += v; else sold += v; }
+      });
+      return { bought, sold, burned };
+    } catch (e) { return null; }
+  }
+
+  // outcomes of the creator's OTHER graduated tokens in the 24h window
+  async function creatorRecord(creator, exceptToken) {
+    const gradSet = new Set(gradList.map(g => g.token));
+    const mine = launches.filter(l => l.creator === creator && l.token !== exceptToken);
+    const grads = mine.filter(l => gradSet.has(l.token)).map(l => l.token).slice(0, 30);
+    if (!grads.length) return { launches: mine.length, graduated: 0, rugged: 0, changes: [] };
+    await enrichMeta(grads);
+    const changes = grads.map(t => { const p = gradMeta.get(t); return reliablePair(p) && p.priceChange && p.priceChange.h24 != null ? p.priceChange.h24 : null; }).filter(x => x != null);
+    return { launches: mine.length, graduated: grads.length, rugged: changes.filter(c => c <= -80).length, changes };
+  }
+
+  function applyExtras(scoreObj, extras) {
+    let s = scoreObj.score;
+    extras.forEach(e => { s += e.delta; scoreObj.factors.push(e.label); });
+    scoreObj.score = Math.max(5, Math.min(95, s));
+    return scoreObj;
+  }
+  const pctOfSupply = v => (Number(v * 10000n / SUPPLY) / 100);
+
   function inspCell(label, val, small) {
     const c = document.createElement('div'); c.className = 'insp-cell';
     const l = document.createElement('div'); l.className = 'label'; l.textContent = label;
@@ -1608,12 +1697,19 @@
               ? rpc('eth_getBalance', [launch.curve, 'latest'], 20000).catch(() => null)
               : rpc('eth_call', [{ to: launch.pair, data: '0x70a08231' + pad32(launch.curve).slice(2) }, 'latest'], 20000).catch(() => null))
           : rpc('eth_call', [{ to: WETH, data: '0x70a08231' + pad32(launch.pool).slice(2) }, 'latest'], 20000).catch(() => null);
-      const [creatorN, holders, poolBalHex, gradSet] = await Promise.all([
+      const hasCreator = !!(launch && launch.creator);
+      const [creatorN, hs, poolBalHex, gradSet, firstTx, devAlloc, record] = await Promise.all([
         launch && rpcLive ? creatorActivity(launch.creator) : Promise.resolve(null),
-        fetchHolders(a, excl),
+        fetchHolderStats(a, [excl]),
         balReq,
-        isV2 && rpcLive ? gradEventsFor([launch.token], launch.block).catch(() => new Set()) : Promise.resolve(new Set())
+        isV2 && rpcLive ? gradEventsFor([launch.token], launch.block).catch(() => new Set()) : Promise.resolve(new Set()),
+        hasCreator ? creatorFirstTx(launch.creator) : Promise.resolve(null),
+        hasCreator ? devAllocation(launch.creator, a) : Promise.resolve(null),
+        hasCreator ? creatorRecord(launch.creator, a) : Promise.resolve(null)
       ]);
+      status.textContent = 'Tracing funding wallet…';
+      const cluster = firstTx && firstTx.funder && !isBurnAddr(firstTx.funder) ? await funderCluster(firstTx.funder, launch.creator) : null;
+      const holders = hs ? hs.count : null;
       const poolBal = poolBalHex ? hexBig(poolBalHex) : null;
       const thr = isV2 ? (launch.thr > 0n ? launch.thr : null) : GRAD_WEI;
       const graduated = isV2 ? gradSet.has(launch.token) : (poolBal != null && poolBal >= GRAD_WEI);
@@ -1623,7 +1719,37 @@
         vol: pair && pair.volume && pair.volume.h24, holders,
         graduated
       };
-      const { score, factors } = scoreToken(t);
+      // ---- deep-check factors ----
+      const extras = [];
+      const ageH = firstTx ? (Date.now() / 1000 - firstTx.ts) / 3600 : null;
+      if (ageH != null) {
+        if (ageH < 1) extras.push({ delta: -15, label: 'creator wallet is ' + Math.max(1, Math.round(ageH * 60)) + ' min old −15' });
+        else if (ageH < 24) extras.push({ delta: -10, label: 'creator wallet is ' + ageH.toFixed(1) + 'h old −10' });
+        else if (ageH > 24 * 14) extras.push({ delta: 5, label: 'creator wallet ' + (ageH / 24).toFixed(0) + ' days old +5' });
+      }
+      if (cluster) {
+        if (cluster.seededDeployers >= 3) extras.push({ delta: -20, label: 'funding wallet also seeded ' + cluster.seededDeployers + ' other deployers (cluster) −20' });
+        else if (cluster.seededDeployers >= 1) extras.push({ delta: -8, label: 'funding wallet seeded ' + cluster.seededDeployers + ' other deployer −8' });
+      }
+      if (devAlloc && devAlloc.bought > 0n) {
+        const soldPct = Number(devAlloc.sold * 100n / devAlloc.bought);
+        const burnPct = Number(devAlloc.burned * 100n / devAlloc.bought);
+        if (soldPct >= 90) extras.push({ delta: -25, label: 'creator moved/sold ' + soldPct + '% of their ' + pctOfSupply(devAlloc.bought).toFixed(1) + '% allocation −25' });
+        else if (soldPct >= 50) extras.push({ delta: -12, label: 'creator moved/sold ' + soldPct + '% of allocation −12' });
+        else if (burnPct >= 90) extras.push({ delta: 8, label: 'creator burned their allocation +8' });
+        else if (pctOfSupply(devAlloc.bought - devAlloc.sold - devAlloc.burned) > 10) extras.push({ delta: -8, label: 'creator holds ' + pctOfSupply(devAlloc.bought - devAlloc.sold - devAlloc.burned).toFixed(1) + '% of supply −8' });
+      }
+      if (hs && hs.count) {
+        if (hs.top1Pct > 20) extras.push({ delta: -15, label: 'top holder owns ' + hs.top1Pct.toFixed(1) + '% −15' });
+        else if (hs.top10Pct > 60) extras.push({ delta: -10, label: 'top 10 holders own ' + hs.top10Pct.toFixed(0) + '% −10' });
+        else if (hs.top10Pct < 30 && hs.count >= 10) extras.push({ delta: 5, label: 'well distributed (top 10 = ' + hs.top10Pct.toFixed(0) + '%) +5' });
+      }
+      if (record && record.graduated) {
+        if (record.rugged >= 2) extras.push({ delta: -20, label: record.rugged + ' of creator\'s previous graduates collapsed ≥80% −20' });
+        else if (record.rugged === 1) extras.push({ delta: -8, label: '1 previous graduate by this creator collapsed ≥80% −8' });
+        else if (record.changes.length) extras.push({ delta: 5, label: 'creator\'s previous graduates holding up +5' });
+      }
+      const { score, factors } = applyExtras(scoreToken(t), extras);
       const v = verdict(score);
       // Render
       $('inspName').textContent = (symbol ? symbol : shortAddr(a)) + (name && name !== symbol ? ' — ' + name : '');
@@ -1648,6 +1774,26 @@
         cr.target = '_blank'; cr.rel = 'noopener'; cr.textContent = shortAddr(launch.creator);
         grid.append(inspCell('Creator', cr, true));
         grid.append(inspCell('Launched', timeAgo(Math.max(1, Date.now() / 1000 - blockTime(launch.block))) + (isV2 ? ' · pons V2' : ' · pons V1 (legacy)'), true));
+        // deep checks
+        if (firstTx) {
+          const fund = document.createElement('span');
+          if (firstTx.funder && !isBurnAddr(firstTx.funder)) {
+            const fa = document.createElement('a');
+            fa.href = 'https://robinhoodchain.blockscout.com/address/' + firstTx.funder;
+            fa.target = '_blank'; fa.rel = 'noopener'; fa.textContent = shortAddr(firstTx.funder);
+            fund.appendChild(fa);
+            fund.appendChild(document.createTextNode(' · ' + fmtWeth(firstTx.value).replace(/\.?0+$/, '') + ' ETH'));
+          } else fund.textContent = 'contract / bridge';
+          grid.append(inspCell('Creator wallet age', ageH < 1 ? Math.max(1, Math.round(ageH * 60)) + ' min' : ageH < 48 ? ageH.toFixed(1) + 'h' : (ageH / 24).toFixed(0) + ' days', true));
+          grid.append(inspCell('First funded by', fund, true));
+        }
+        if (cluster) grid.append(inspCell('Funder also seeded', cluster.seededDeployers + ' other deployer' + (cluster.seededDeployers === 1 ? '' : 's') + ' (24h) · ' + cluster.recipients + ' wallets total', true));
+        if (devAlloc) {
+          const b = devAlloc.bought;
+          grid.append(inspCell('Creator allocation', b > 0n ? pctOfSupply(b).toFixed(2) + '% bought · ' + Number(devAlloc.sold * 100n / b) + '% sold/moved · ' + Number(devAlloc.burned * 100n / b) + '% burned' : 'no dev buy', true));
+        }
+        if (hs && hs.count) grid.append(inspCell('Top holder / top 10', hs.top1Pct.toFixed(1) + '% / ' + hs.top10Pct.toFixed(0) + '% of supply', true));
+        if (record) grid.append(inspCell('Creator record (24h)', record.launches + ' other launch' + (record.launches === 1 ? '' : 'es') + ' · ' + record.graduated + ' graduated · ' + record.rugged + ' collapsed', true));
       }
       const gw = $('inspGradWrap');
       if (graduated) {
