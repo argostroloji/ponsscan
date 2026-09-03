@@ -146,6 +146,8 @@
   /* Inspector */
   .insp-card { border: 1.5px solid color-mix(in oklab, #12b06c 45%, var(--border)); background: linear-gradient(180deg, color-mix(in oklab, #12b06c 7%, var(--surface-1)), var(--surface-1) 55%); box-shadow: 0 2px 16px rgba(14,156,96,0.10); }
   .insp-card h2 { font-size: 17px; display: flex; align-items: center; gap: 8px; }
+  .brand-tag { margin-left: auto; float: right; font-size: 11px; font-weight: 650; color: var(--text-muted); letter-spacing: 0.02em; }
+  .brand-tag::before { content: "◳ "; color: #12b06c; }
   .insp-card h2 .insp-ico { font-size: 19px; }
   .insp-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
   .insp-row input { flex: 1; min-width: 260px; font: inherit; font-size: 14.5px; font-family: ui-monospace, monospace; color: var(--text-primary); background: var(--page); border: 1.5px solid color-mix(in oklab, #12b06c 30%, var(--border)); border-radius: 10px; padding: 13px 16px; outline: none; transition: border-color .15s, box-shadow .15s; }
@@ -289,7 +291,7 @@
   <div class="eco-strip" id="ecoStrip" style="display:none"></div>
 
   <div class="card insp-card">
-    <h2><span class="insp-ico">🔍</span>Token inspector — check any pons token or creator wallet</h2>
+    <h2><span class="insp-ico">🔍</span>Token inspector — check any pons token or creator wallet<span class="brand-tag">ponsscan.xyz</span></h2>
     <div class="desc">Paste a <strong>token address</strong> (creator history, real holders, market state, graduation progress → transparent safety score) or a <strong>creator wallet</strong> (their launches, graduation rate, serial-deployer check). All read live from the chain. <strong>Not an audit, not financial advice.</strong></div>
     <div class="insp-row">
       <input id="inspInput" type="text" placeholder="0x… address — or search by name (e.g. pickles)" spellcheck="false" autocomplete="off">
@@ -302,6 +304,7 @@
         <span class="tname" id="inspName">—</span>
         <span class="chip" id="inspVerdict"></span>
         <span class="mono" id="inspAddr"></span>
+        <span class="brand-tag">ponsscan.xyz</span>
       </div>
       <div class="insp-grid" id="inspGrid"></div>
       <div id="inspGradWrap">
@@ -316,7 +319,7 @@
   </div>
 
   <div class="card">
-    <div class="card-head"><h2>🎓 Live graduations <span class="scan-status" id="gradCount"></span></h2>
+    <div class="card-head"><h2>🎓 Live graduations <span class="scan-status" id="gradCount"></span><span class="brand-tag">ponsscan.xyz</span></h2>
       <div class="seg">
         <button class="mini-btn seg-on" id="sortNew" type="button">Newest</button>
         <button class="mini-btn" id="sortGain" type="button">Top 24h</button>
@@ -344,14 +347,14 @@
   </div>
 
   <div class="card">
-    <h2>Launch rate — last 24 hours <span class="scan-status" id="scanStatus"></span></h2>
+    <h2>Launch rate — last 24 hours <span class="scan-status" id="scanStatus"></span><span class="brand-tag">ponsscan.xyz</span></h2>
     <div class="desc">New tokens per hour on the active factory — every <code>TokenLaunched</code> event, counted directly from chain logs (no sampling)</div>
     <svg id="rateChart" width="100%" viewBox="0 0 1020 240" role="img" aria-label="Column chart of hourly launch rate over the last 24 hours"></svg>
   </div>
 
   <div class="grid2">
     <div class="card">
-      <div class="card-head"><h2>Live launch feed</h2><button class="mini-btn" id="feedRefreshBtn" type="button">↻ Refresh</button></div>
+      <div class="card-head"><h2>Live launch feed <span class="brand-tag">ponsscan.xyz</span></h2><button class="mini-btn" id="feedRefreshBtn" type="button">↻ Refresh</button></div>
       <div class="desc">Most recent launches on the active factory — refreshes every 60s. Click a token to inspect it, ⧉ copies the contract address. Red badge = serial deployer (launches by that wallet in the last 24h).</div>
       <table class="feed-table" id="feedTable">
         <thead><tr><th>Token</th><th>Age</th><th>Creator</th></tr></thead>
@@ -359,7 +362,7 @@
       </table>
     </div>
     <div class="card">
-      <h2>Graduation radar</h2>
+      <h2>Graduation radar<span class="brand-tag">ponsscan.xyz</span></h2>
       <div class="desc" id="radarDesc">Newest launches closest to the 4.2 WETH graduation threshold (WETH balance of each launch pool, read live). Click to inspect.</div>
       <div id="radarList"><span style="font-size:12px;color:var(--text-muted)">Scanning curves…</span></div>
     </div>
@@ -1050,7 +1053,7 @@
     tdK.style.whiteSpace = 'nowrap';
     if (p) {
       const a = document.createElement('a');
-      a.href = 'https://dexscreener.com/robinhoodchain/' + (p.pairAddress || token);
+      a.href = p.url || ('https://dexscreener.com/robinhood/' + (p.pairAddress || token));
       a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'chart ↗';
       tdK.appendChild(a);
       tdK.appendChild(document.createTextNode(' '));
@@ -1630,17 +1633,18 @@
       const links = $('inspLinks'); links.replaceChildren();
       const mk = (href, text) => { const x = document.createElement('a'); x.href = href; x.target = '_blank'; x.rel = 'noopener'; x.textContent = text; return x; };
       links.append(mk('https://www.ponsfamily.com/launchpad/' + a, 'View on pons ↗'), mk('https://robinhoodchain.blockscout.com/token/' + a, 'Blockscout ↗'));
-      if (pair) links.append(mk('https://dexscreener.com/robinhoodchain/' + pair.pairAddress, 'DexScreener ↗'));
+      const dexUrl = pair ? (pair.url || 'https://dexscreener.com/robinhood/' + pair.pairAddress) : null;
+      if (pair) links.append(mk(dexUrl, 'DexScreener ↗'));
       links.append(mk(shareHref(a, symbol, pair), 'Share on 𝕏 ↗'));
       // live chart embed (DexScreener widget) for tokens with a pool
       const chartEl = $('inspChart');
       chartEl.replaceChildren();
-      if (pair && pair.pairAddress) {
+      if (pair && dexUrl) {
         const dt = root.getAttribute('data-theme');
         const isDark = dt ? dt === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
         const ifr = document.createElement('iframe');
         ifr.loading = 'lazy';
-        ifr.src = 'https://dexscreener.com/robinhoodchain/' + pair.pairAddress + '?embed=1&theme=' + (isDark ? 'dark' : 'light') + '&trades=0&info=0';
+        ifr.src = dexUrl + '?embed=1&theme=' + (isDark ? 'dark' : 'light') + '&trades=0&info=0';
         chartEl.appendChild(ifr);
         chartEl.style.display = 'block';
       } else chartEl.style.display = 'none';
