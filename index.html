@@ -1665,6 +1665,17 @@
     } catch (e) { return null; }
   }
 
+  // creator's allocation from the token's own Transfer logs (RPC only — no explorer dependency)
+  async function devAllocationRpc(creator, token, fromBlock) {
+    try {
+      const q = topics => rpc('eth_getLogs', [{ fromBlock: '0x' + fromBlock.toString(16), toBlock: 'latest', address: token, topics }], 30000);
+      const [outs, ins] = await Promise.all([q([TOPIC_TRANSFER, pad32(creator)]), q([TOPIC_TRANSFER, null, pad32(creator)])]);
+      let bought = 0n, sold = 0n, burned = 0n;
+      (ins || []).forEach(l => { bought += hexBig(l.data); });
+      (outs || []).forEach(l => { const to = topicAddr(l.topics[2]); const v = hexBig(l.data); if (isBurnAddr(to)) burned += v; else sold += v; });
+      return { bought, sold, burned };
+    } catch (e) { return null; }
+  }
   function applyExtras(scoreObj, extras) {
     let s = scoreObj.score;
     extras.forEach(e => { s += e.delta; scoreObj.factors.push(e.label); });
@@ -1748,14 +1759,15 @@
               : rpc('eth_call', [{ to: launch.pair, data: '0x70a08231' + pad32(launch.curve).slice(2) }, 'latest'], 20000).catch(() => null))
           : rpc('eth_call', [{ to: WETH, data: '0x70a08231' + pad32(launch.pool).slice(2) }, 'latest'], 20000).catch(() => null);
       const hasCreator = !!(launch && launch.creator);
-      const [creatorN, hs, poolBalHex, gradSet, firstTx, devAlloc, record] = await Promise.all([
+      const [creatorN, hs, poolBalHex, gradSet, firstTx, devAlloc, record, nonceHex] = await Promise.all([
         launch && rpcLive ? creatorActivity(launch.creator) : Promise.resolve(null),
         fetchHolderStats(a, [excl]),
         balReq,
         isV2 && rpcLive ? gradEventsFor([launch.token], launch.block).catch(() => new Set()) : Promise.resolve(new Set()),
         hasCreator ? creatorFirstTx(launch.creator) : Promise.resolve(null),
-        hasCreator ? devAllocation(launch.creator, a) : Promise.resolve(null),
-        hasCreator ? creatorRecord(launch.creator, a) : Promise.resolve(null)
+        hasCreator && rpcLive ? devAllocationRpc(launch.creator, a, Math.max(V2_START, launch.block - 5)) : (hasCreator ? devAllocation(launch.creator, a) : Promise.resolve(null)),
+        hasCreator ? creatorRecord(launch.creator, a) : Promise.resolve(null),
+        hasCreator && rpcLive ? rpc('eth_getTransactionCount', [launch.creator, 'latest'], 15000).catch(() => null) : Promise.resolve(null)
       ]);
       status.textContent = 'Tracing funding wallet…';
       const cluster = firstTx && firstTx.funder && !isBurnAddr(firstTx.funder) ? await funderCluster(firstTx.funder, launch.creator) : null;
@@ -1781,6 +1793,8 @@
         else if (ageH < 24) extras.push({ delta: -10, label: 'creator wallet is ' + ageH.toFixed(1) + 'h old −10' });
         else if (ageH > 24 * 14) extras.push({ delta: 5, label: 'creator wallet ' + (ageH / 24).toFixed(0) + ' days old +5' });
       }
+      const nonce = nonceHex ? hexNum(nonceHex) : null;
+      if (!firstTx && nonce != null && nonce <= 3) extras.push({ delta: -10, label: 'creator wallet has only ' + nonce + ' transaction' + (nonce === 1 ? '' : 's') + ' (fresh) −10' });
       if (cluster) {
         const exchangeLike = cluster.recipients >= 100; // high-volume distributor (CEX/bridge hot wallet) — weaker signal
         if (exchangeLike) {
@@ -1849,7 +1863,7 @@
           grid.append(inspCell('Creator wallet age', ageH < 1 ? Math.max(1, Math.round(ageH * 60)) + ' min' : ageH < 48 ? ageH.toFixed(1) + 'h' : (ageH / 24).toFixed(0) + ' days', true));
           grid.append(inspCell('First funded by', fund, true));
         }
-        if (!firstTx && hasCreator) grid.append(inspCell('Creator wallet age', 'unavailable — explorer busy, re-inspect', true));
+        if (!firstTx && hasCreator) grid.append(inspCell('Creator wallet activity', nonce != null ? nonce + ' transaction' + (nonce === 1 ? '' : 's') + ' total · funding trace unavailable (explorer busy)' : 'unavailable — explorer busy, re-inspect', true));
         if (cluster) grid.append(inspCell('Funder also seeded', cluster.seededDeployers + ' other deployer' + (cluster.seededDeployers === 1 ? '' : 's') + ' (24h) · ' + cluster.recipients + ' wallets total', true));
         if (devAlloc) {
           const b = devAlloc.bought;
