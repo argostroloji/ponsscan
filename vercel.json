@@ -1,9 +1,11 @@
 {
   "rewrites": [
-    { "source": "/", "has": [{ "type": "query", "key": "token" }], "destination": "/api/share" }
+    { "source": "/", "has": [{ "type": "query", "key": "token" }], "destination": "/api/share" },
+    { "source": "/", "destination": "/app.html" },
+    { "source": "/index.html", "destination": "/app.html" }
   ],
   "functions": {
-    "api/share.js": { "includeFiles": "index.html" }
+    "api/share.js": { "includeFiles": "app.html" }
   },
   "headers": [
     { "source": "/api/og", "headers": [{ "key": "Cache-Control", "value": "public, s-maxage=300, stale-while-revalidate=900" }] }

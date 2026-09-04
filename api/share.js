@@ -9,7 +9,7 @@ const fmtUsd = v => v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? '$'
 
 let cachedHtml = null;
 function loadHtml() {
-  if (!cachedHtml) cachedHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+  if (!cachedHtml) cachedHtml = fs.readFileSync(path.join(process.cwd(), 'app.html'), 'utf8');
   return cachedHtml;
 }
 
