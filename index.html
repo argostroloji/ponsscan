@@ -445,6 +445,21 @@
   </div>
 
   <div class="card">
+    <div class="card-head"><h2>👑 Creator leaderboard <span class="scan-status" id="lbNote"></span><span class="brand-tag">ponsscan.xyz</span></h2>
+      <div class="seg">
+        <button class="mini-btn seg-on" id="lbTop" type="button">Top creators</button>
+        <button class="mini-btn" id="lbFact" type="button">Factories</button>
+      </div>
+    </div>
+    <div class="desc" id="lbDesc">Deployers ranked by graduations in the last 24h, with how their graduates are holding up (24h change: holding &gt; −50%, collapsed ≤ −80%). Click a creator for their full record, a token to rug-check it.</div>
+    <div class="tscroll">
+    <table id="lbTable">
+      <thead><tr><th>#</th><th>Creator</th><th>Launches</th><th>Graduated</th><th>Grad rate</th><th>Survival</th><th>Best graduate</th></tr></thead>
+      <tbody><tr><td colspan="7" style="color:var(--text-muted)">Waiting for the 24h scan…</td></tr></tbody>
+    </table>
+    </div>
+  </div>
+  <div class="card">
     <h2>Safety signals — sampled launches</h2>
     <div class="desc">Rule-based heuristic score (0–100) from on-chain signals: creator's serial-launch activity, market state, and real holders outside the liquidity pool. Fixed 12-token cohort from the pons V1 era (28 Jul); market, holder and graduation data re-checked live every 5 min. The inspector above scores V2 tokens the same way. <strong>Not an audit, not financial advice</strong> — a screening aid.</div>
     <div class="tscroll">
@@ -775,7 +790,7 @@
       status.textContent = '';
       $('kpiLaunches').textContent = launches.length.toLocaleString('en-US');
       $('kpiLaunchesNote').textContent = 'Exact on-chain count · pons V2 factory · live';
-      refreshGrads24h();
+      refreshGrads24h().then(renderLeaderboard);
       renderEcoStrip();
     } catch (e) {
       status.textContent = '· partial scan (last ' + Math.round((chain.latestBlock - scannedFromBlock) / HOUR_BLOCKS) + 'h shown) — retries in 30 min';
@@ -1370,6 +1385,93 @@
       row.addEventListener('pointerleave', hideTip);
       list.appendChild(row);
     });
+  }
+
+  /* ================= CREATOR LEADERBOARD ================= */
+  let lbView = 'top', renderingLb = false;
+  function setLbView(v) {
+    lbView = v;
+    $('lbTop').classList.toggle('seg-on', v === 'top');
+    $('lbFact').classList.toggle('seg-on', v === 'fact');
+    $('lbDesc').textContent = v === 'top'
+      ? 'Deployers ranked by graduations in the last 24h, with how their graduates are holding up (24h change: holding > −50%, collapsed ≤ −80%). Click a creator for their full record, a token to rug-check it.'
+      : 'The most prolific deployers of the last 24h — wallets mass-producing tokens with few or no graduations. Serial deployment is a strong negative signal in the safety score.';
+    renderLeaderboard();
+  }
+  async function renderLeaderboard() {
+    if (renderingLb || !launches.length) return;
+    renderingLb = true;
+    try {
+      const gradSet = new Set(gradList.map(g => g.token));
+      const by = new Map();
+      launches.forEach(l => {
+        let cr = by.get(l.creator);
+        if (!cr) { cr = { creator: l.creator, launches: 0, grads: [] }; by.set(l.creator, cr); }
+        cr.launches++;
+        if (gradSet.has(l.token)) cr.grads.push(l.token);
+      });
+      const all = [...by.values()];
+      // Top: quality-ranked — factories (>15 launches) excluded, survival of graduates weighted in
+      let rows = lbView === 'top'
+        ? all.filter(c => c.grads.length && c.launches <= 15).sort((a, b) => b.grads.length - a.grads.length || a.launches - b.launches).slice(0, 14)
+        : all.sort((a, b) => b.launches - a.launches).slice(0, 10);
+      const toks = rows.flatMap(c => c.grads.slice(0, 4)).slice(0, 60);
+      await enrichMeta(toks);
+      await fetchSymbols(toks.filter(t => !gradMeta.get(t)));
+      rows.forEach(c => {
+        let hold = 0, coll = 0, checked = 0, best = null, bestChg = -Infinity;
+        c.grads.slice(0, 4).forEach(t => {
+          const p = gradMeta.get(t);
+          if (!reliablePair(p) || !p.priceChange || p.priceChange.h24 == null) return;
+          const ch = p.priceChange.h24; checked++;
+          if (ch <= -80) coll++; else if (ch > -50) hold++;
+          if (ch > bestChg) { bestChg = ch; best = t; }
+        });
+        const quality = hold * 3 + c.grads.length - coll * 3 - (c.launches - c.grads.length) * 0.5;
+        Object.assign(c, { hold, coll, checked, best, bestChg, quality });
+      });
+      if (lbView === 'top') rows = rows.sort((a, b) => b.quality - a.quality || b.grads.length - a.grads.length).slice(0, 10);
+      $('lbNote').textContent = '· ' + all.length.toLocaleString('en-US') + ' creators · ' + gradSet.size + ' graduations';
+      const tbody = document.querySelector('#lbTable tbody');
+      tbody.replaceChildren();
+      if (!rows.length) {
+        const tr = document.createElement('tr'); const td = document.createElement('td');
+        td.colSpan = 7; td.style.color = 'var(--text-muted)'; td.textContent = 'No graduations in the scanned window yet.';
+        tr.appendChild(td); tbody.appendChild(tr); return;
+      }
+      rows.forEach((c, i) => {
+        const tr = document.createElement('tr');
+        const td0 = document.createElement('td'); td0.textContent = i === 0 && lbView === 'top' ? '👑' : String(i + 1); td0.style.color = 'var(--text-muted)'; tr.appendChild(td0);
+        const tdC = document.createElement('td');
+        const s = document.createElement('span'); s.className = 'feed-sym mono'; s.textContent = shortAddr(c.creator); s.title = c.creator;
+        s.addEventListener('click', () => { $('inspInput').value = c.creator; inspect(c.creator); });
+        tdC.append(s, copyBtn(c.creator));
+        if (c.launches >= 5 && lbView === 'top') { const w = document.createElement('span'); w.className = 'warnchip'; w.textContent = '×' + c.launches; w.title = 'serial deployer'; tdC.appendChild(w); }
+        tr.appendChild(tdC);
+        const tdL = document.createElement('td'); tdL.textContent = String(c.launches); tr.appendChild(tdL);
+        const tdG = document.createElement('td'); tdG.textContent = c.grads.length + ' 🎓'; tdG.style.fontWeight = '650'; tr.appendChild(tdG);
+        const tdR = document.createElement('td'); const rate = c.grads.length / c.launches * 100;
+        tdR.textContent = rate.toFixed(0) + '%'; tdR.style.color = rate >= 50 ? 'var(--delta-good)' : rate < 5 ? 'var(--status-critical)' : 'inherit'; tr.appendChild(tdR);
+        const tdS = document.createElement('td');
+        if (c.checked) {
+          const h = document.createElement('span'); h.className = 'pc-up'; h.textContent = c.hold + ' holding';
+          const k = document.createElement('span'); k.className = 'pc-down'; k.textContent = c.coll + ' collapsed';
+          tdS.append(h, document.createTextNode(' · '), k);
+          if (c.checked < c.grads.length) tdS.appendChild(document.createTextNode(' (of ' + c.checked + ')'));
+        } else tdS.textContent = c.grads.length ? 'indexing…' : '—';
+        tr.appendChild(tdS);
+        const tdB = document.createElement('td');
+        if (c.best) {
+          const bp = gradMeta.get(c.best);
+          const b = document.createElement('span'); b.className = 'feed-sym'; b.textContent = bp && bp.baseToken ? bp.baseToken.symbol : sym(c.best); b.title = c.best;
+          b.addEventListener('click', () => { $('inspInput').value = c.best; inspect(c.best); });
+          const ch = document.createElement('span'); ch.className = c.bestChg >= 0 ? 'pc-up' : 'pc-down'; ch.textContent = ' ' + (c.bestChg >= 0 ? '+' : '') + Math.round(c.bestChg) + '%';
+          tdB.append(b, ch);
+        } else tdB.textContent = '—';
+        tr.appendChild(tdB);
+        tbody.appendChild(tr);
+      });
+    } finally { renderingLb = false; }
   }
 
   /* ================= CREATOR STATS ================= */
@@ -2184,7 +2286,7 @@
       if (rpcLive) {
         if (fullScan) await scan24h();
         await gradRadar();
-        refreshGrads24h();
+        refreshGrads24h().then(renderLeaderboard);
         setPill(true, 'Live · block ' + chain.latestBlock.toLocaleString('en-US'));
       }
     } catch (e) { /* partial is fine */ }
@@ -2226,6 +2328,8 @@
     b.disabled = true; b.textContent = '…';
     try { await refreshFeedData(); } finally { b.textContent = '↻'; b.disabled = false; }
   });
+  $('lbTop').addEventListener('click', () => setLbView('top'));
+  $('lbFact').addEventListener('click', () => setLbView('fact'));
   $('sortNew').addEventListener('click', () => setSort('new'));
   $('sortGain').addEventListener('click', () => setSort('gain'));
   $('sortLiq').addEventListener('click', () => setSort('liq'));
