@@ -1,0 +1,11 @@
+{
+  "rewrites": [
+    { "source": "/", "has": [{ "type": "query", "key": "token" }], "destination": "/api/share" }
+  ],
+  "functions": {
+    "api/share.js": { "includeFiles": "index.html" }
+  },
+  "headers": [
+    { "source": "/api/og", "headers": [{ "key": "Cache-Control", "value": "public, s-maxage=300, stale-while-revalidate=900" }] }
+  ]
+}
