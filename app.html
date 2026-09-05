@@ -83,6 +83,8 @@
   .tg-pill:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -10px rgba(14,156,96,0.8); }
   .x-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 650; border-radius: 999px; padding: 6px 14px; color: var(--page); background: var(--text-primary); transition: transform .15s ease, opacity .15s ease; }
   .x-pill:hover { transform: translateY(-1px); opacity: .9; }
+  .pscan-pill { background: linear-gradient(135deg, #1a2a22, #0f1d15); color: #3fe39c; border: 1px solid rgba(63,227,156,0.35); box-shadow: none; }
+  .pscan-pill:hover { box-shadow: 0 8px 18px -10px rgba(63,227,156,0.6); }
   .live-pill .ldot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
   .live-pill.on .ldot { background: var(--status-good); box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-good) 22%, transparent); }
   .btnrow { display: flex; gap: 8px; }
@@ -306,6 +308,7 @@
     <span class="live-pill" id="livePill"><span class="ldot"></span><span id="liveText">Connecting…</span></span>
     <a class="tg-pill" href="https://t.me/ponsscan" target="_blank" rel="noopener">🎓 Graduation alerts — Telegram</a>
     <a class="x-pill" href="https://x.com/pons_scan" target="_blank" rel="noopener">𝕏 @pons_scan</a>
+    <a class="tg-pill pscan-pill" href="?token=0x7ec18c9cd968f3efce22c41a5798fc3f08c9edd8" title="PonsScan token — open in the inspector">◳ $PSCAN</a>
   </div>
 
   <div class="kpis">
